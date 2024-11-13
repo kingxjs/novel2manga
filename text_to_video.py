@@ -1,3 +1,4 @@
+import shutil
 import time
 import requests
 import json
@@ -10,9 +11,8 @@ import subprocess
 import re
 
 from add_text_to_image import add_text_to_image
+from api.text2img_liblib import Text2img
 from draw_prompt import generate_prompt
-
-
 
 # 尝试加载线上环境变量文件
 load_dotenv('.env', override=True)
@@ -31,75 +31,58 @@ headers = {
     "Content-Type": "application/json"
 }
 
+
 # auto try
 def generateImage(model, prompt):
-    try_count = 0
-    inputs = ""
-    error = ""
-    while try_count < 3 and inputs == "":
-        try:
-            inputs = generate_prompt(prompt)
-        except Exception as e:
-            try_count += 1
-            print("Failed to generate image prompt, retrying", e)
-            error = str(e)
-            continue
-    if inputs == "":
-        raise Exception("Failed to generate image prompt",error)
-    body = {
-        "inputs": inputs
-    }
-
-    print("prompt generate image", body)
-
-    def call_model_text_to_image(model, body):
-        if model == "pollinations-ai":
-            r = requests.post("https://image.pollinations.ai/prompt/"+body['inputs'])
-        else:
-            r = requests.post("https://api-inference.huggingface.co/models/" + model,
-                            data=json.dumps(body), headers=headers)
-        return r
-    r = call_model_text_to_image(model, body)
-    try_count = 0
-    while r.status_code != 200 and try_count < 3:
-        r = call_model_text_to_image(model, body)
-        try_count += 1
-
-    if r.status_code != 200:
-        raise Exception("Failed to generate image", r.status_code, r.text)
-    # 将图片写入到 images 目录下，每个图片使用(时间戳+model).png 来命名
+    # liblib = Text2img()
+    # # 简易模式：旗舰版任务，如果不需要请注释
+    # liblib.ultra_text2img()
+    # # 将图片写入到 images 目录下，每个图片使用(时间戳+model).png 来命名
+    # timeStamp = str(int(time.time()))
+    # imagePath = "images/" + timeStamp + \
+    #     "-" + model.split("/")[-1] + ".png"
+    # with open(imagePath, "wb") as f:
+    #     f.write(r.content)
+    #     f.close()
     timeStamp = str(int(time.time()))
+    # 读取磁盘C:\Users\Ghan\Desktop\OIP-C.jpg，写入到images目录下
+    source_path = r"C:\Users\Ghan\Desktop\OIP-C.jpg"
+    # 读取源文件并写入到目标文件夹
     imagePath = "images/" + timeStamp + \
-        "-" + model.split("/")[-1] + ".png"
-    with open(imagePath, "wb") as f:
-        f.write(r.content)
-        f.close()
+                "-" + model.split("/")[-1] + ".png"
+    with open(source_path, "rb") as src_file:
+        with open(imagePath, "wb") as tgt_file:
+            # 读取源文件内容并写入目标文件
+            shutil.copyfileobj(src_file, tgt_file)
+
     voicePath = "voices/" + timeStamp + \
-        "-" + model.split("/")[-1] + ".mp3"
+                "-" + model.split("/")[-1] + ".mp3"
     convert_text_to_speech(
         text=prompt, output_file=voicePath
     )
 
 
 def convert_text_to_speech(text, output_file):
-        # 指定输出目录
-    output_directory = os.path.join(current_directory,"voices")
+    # 指定输出目录
+    output_directory = os.path.join(current_directory, "voices")
     # 创建输出目录（如果不存在）
     os.makedirs(output_directory, exist_ok=True)
     # 执行命令，并将工作目录设置为输出目录
     try:
-        command = ['edge-tts', '--voice', 'zh-CN-XiaoyiNeural', '--text', text, '--write-media', output_file, '--write-subtitles', f'{output_file}.vtt']
-        result = subprocess.run(command, cwd=current_directory, timeout=10)
+        command = ['edge-tts', '--voice', 'zh-CN-XiaoyiNeural', '--text', text, '--write-media', output_file,
+                   '--write-subtitles', f'{output_file}.vtt']
+        result = subprocess.run(command, cwd=current_directory, timeout=20)
         print(result)
         duration = get_duration_from_vtt(output_file + ".vtt")
         # 删除 无效音频 or 重新生成？
-        if duration == 0.1:
-            os.remove(output_file + ".vtt")
-            os.remove(output_file)
+        # if duration == 0.1:
+        #     os.remove(output_file + ".vtt")
+        #     os.remove(output_file)
 
     except subprocess.CalledProcessError as e:
         print("Command execution failed with return code:", e.returncode)
         print("Command output:", e.output)
+
 
 def clear_folder(folder_path):
     """清空指定文件夹中的文件"""
@@ -109,19 +92,19 @@ def clear_folder(folder_path):
             os.remove(file_path)
 
 
-
 def split_sentences(text):
     text = re.sub('([。！？\?])([^”’])', r"\1\n\2", text)  # 单字符断句符
     text = re.sub('(\.{6})([^”’])', r"\1\n\2", text)  # 英文省略号
     text = re.sub('(\…{2})([^”’])', r"\1\n\2", text)  # 中文省略号
     text = re.sub('([。！？\?][”’])([^，。！？\?])', r'\1\n\2', text)
-    sentences =  text.split("\n")
+    sentences = text.split("\n")
     # 移除空白的句子
     sentences = [sentence.strip()
                  for sentence in sentences if sentence.strip()]
     return sentences
-def convertTextToVideo(model, text):
 
+
+def convertTextToVideo(model, text):
     # 将文本段落进行分句
     sentences = split_sentences(text)
 
@@ -137,16 +120,16 @@ def convertTextToVideo(model, text):
     # 为每个句子生成图片
     for sentence in sentences:
         if sentence.strip() != "":
-            print("generateImage for sentence" , sentence)
+            print("generateImage for sentence", sentence)
             generateImage(model, sentence.strip())
-            print("generateImage for sentence done" , sentence)
+            print("generateImage for sentence done", sentence)
 
     # 合成视频
     frame_width = 640
     frame_height = 480
     timeStamp = str(int(time.time()))
     output_video_path = "videos/" + timeStamp + \
-        "-" + model.split("/")[-1] + ".mp4"
+                        "-" + model.split("/")[-1] + ".mp4"
     output_video = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(
         *'mp4v'), 30, (frame_width, frame_height))
 
@@ -157,7 +140,7 @@ def convertTextToVideo(model, text):
         if image_file.endswith(".png"):
 
             text_color = (255, 255, 255)  # 白色文字
-            background = (0, 0, 0,128)  # 黑色背景半透明
+            background = (0, 0, 0, 128)  # 黑色背景半透明
             image_path = "images/" + image_file
             draw_text = sentences[image_files.index(image_file)]
             add_text_to_image(draw_text, image_path,
@@ -174,12 +157,12 @@ def convertTextToVideo(model, text):
 
     output_video.release()
     middle_output_video_path = "videos/" + timeStamp + \
-        "-" + model.split("/")[-1] + ".withAudio.mp4"
+                               "-" + model.split("/")[-1] + ".withAudio.mp4"
 
     merge_audio_to_video("voices", output_video_path,
                          middle_output_video_path)
-    desc_output_video_path = "videos/"+find_file_name_without_extension(
-        middle_output_video_path)+"transformH264.mp4"
+    desc_output_video_path = "videos/" + find_file_name_without_extension(
+        middle_output_video_path) + "transformH264.mp4"
     convert_to_h264(middle_output_video_path, desc_output_video_path)
     return desc_output_video_path
 
@@ -195,11 +178,12 @@ def convert_to_h264(input_file, output_file):
         print('视频转换失败:', e)
 
 
-
 def find_file_name_without_extension(file_path):
     file_name = os.path.basename(file_path)
     file_name_without_extension = os.path.splitext(file_name)[0]
     return file_name_without_extension
+
+
 def merge_audio_to_video(audio_directory, video_file, output_file):
     # 获取目录中的音频文件
     audio_files = [file for file in os.listdir(
@@ -218,12 +202,12 @@ def merge_audio_to_video(audio_directory, video_file, output_file):
 
     # 添加音频文件参数
     for audio_file in audio_files:
-        command.extend(['-i', audio_directory+'/'+audio_file])
+        command.extend(['-i', audio_directory + '/' + audio_file])
 
     # 设置音频合并选项
     command.extend([
         '-filter_complex',
-        ''.join([f'[{i+1}:0]' for i in range(len(audio_files))]) +
+        ''.join([f'[{i + 1}:0]' for i in range(len(audio_files))]) +
         f'concat=n={len(audio_files)}:v=0:a=1[outa]',
         '-map',
         '0:v',
@@ -237,9 +221,12 @@ def merge_audio_to_video(audio_directory, video_file, output_file):
         output_file
     ])
 
+    print("输出文件是：" + output_file)
+
     # 执行FFmpeg命令
-    result = subprocess.run(command,cwd=current_directory, timeout=300)
+    result = subprocess.run(command, cwd=current_directory, timeout=300)
     print(result)
+
 
 def get_duration_from_vtt(vtt_file):
     print(vtt_file)
@@ -272,12 +259,12 @@ def convert_time_to_seconds(time):
     seconds = int(seconds)
     milliseconds = int(milliseconds)
     total_seconds = (hours * 3600) + (minutes * 60) + \
-        seconds + (milliseconds / 1000)
+                    seconds + (milliseconds / 1000)
     return total_seconds
 
 
 if __name__ == '__main__':
-   text_test= '''
+    text_test = '''
    一个风和日丽的早上，我骑着自行车去学校，在路上遇到了彩虹，当时我的心情非常的愉快。
 '''
 #    convertTextToVideo(models[0], text_test)
