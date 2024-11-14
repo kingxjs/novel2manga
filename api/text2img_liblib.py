@@ -67,19 +67,19 @@ class Text2img:
         url = f"https://openapi.liblibai.cloud/api/generate/webui/status?AccessKey={ak}&Signature={signature}&Timestamp={time_stamp}&SignatureNonce={signature_nonce}"
         return url
 
-    def ultra_text2img(self):
+    def ultra_text2img(self, prompt, templateUuid="5d7e67009b344550bc1aa6ccbfa1d7f4"):
         """
         ultra json
         """
         base_json = {
-            "templateUuid": "5d7e67009b344550bc1aa6ccbfa1d7f4",
+            "templateUuid": templateUuid,
             "generateParams": {
-                "prompt": "Serendipity, Dream Tarot, very detailed, ultra high resolution, 32K UHD, best quality, masterpiece,",
+                "prompt": prompt,
                 "aspectRatio": "portrait",
                 "imgCount": 1,
             }
         }
-        self.run(base_json, self.text2img_ultra_url)
+        return self.run(base_json, self.text2img_ultra_url)
 
     def text2img(self):
         """
@@ -182,9 +182,9 @@ class Text2img:
 def main():
     test = Text2img()
     # 简易模式：旗舰版任务，如果不需要请注释
-    test.ultra_text2img()
+    test.ultra_text2img("Cao Xiong and Zhang Xuan, intense competition, classroom setting, academic rivalry, two teachers facing off, tense atmosphere, detailed facial expressions, vivid emotions, high quality, ultra realistic, 32K UHD, dynamic composition, dramatic lighting, high drama, masterpiece, best quality")
     # 进阶模式：最全版本文生图，如果不需要请注释（API标准计划可用）
-    test.text2img()
+    #test.text2img()
 
 
 if __name__ == '__main__':
