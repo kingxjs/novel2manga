@@ -1,4 +1,5 @@
 import hmac
+import os
 import time
 import requests
 from datetime import datetime
@@ -6,9 +7,20 @@ import hashlib
 import uuid
 import base64
 
+from dotenv import load_dotenv
+
+load_dotenv('.env', override=True)
+
+# 尝试加载本地开发环境变量文件
+load_dotenv('.local.env', override=True)
+
+# 读取环境变量
+liblib_api_ak = os.getenv('LIBLIB_API_AK')
+liblib_api_sk = os.getenv('LIBLIB_API_SK')
+
 
 class Text2img:
-    def __init__(self, ak='trrLBNTpM0tH7s2t0V7fLQ', sk='1I81Dy5JClgIUYtRR1xxbOXDnfGpgmI2', interval=5):
+    def __init__(self, ak=liblib_api_ak, sk=liblib_api_sk, interval=5):
         """
         :param ak
         :param sk
@@ -67,7 +79,7 @@ class Text2img:
         url = f"https://openapi.liblibai.cloud/api/generate/webui/status?AccessKey={ak}&Signature={signature}&Timestamp={time_stamp}&SignatureNonce={signature_nonce}"
         return url
 
-    def ultra_text2img(self, prompt, templateUuid="5d7e67009b344550bc1aa6ccbfa1d7f4"):
+    def ultra_text2img(self, prompt, templateUuid="5d7e67009b344550bc1aa6ccbfa1d7f4", aspectRatio="landscape"):
         """
         ultra json
         """
@@ -75,7 +87,7 @@ class Text2img:
             "templateUuid": templateUuid,
             "generateParams": {
                 "prompt": prompt,
-                "aspectRatio": "portrait",
+                "aspectRatio": aspectRatio,
                 "imgCount": 1,
             }
         }
@@ -182,9 +194,10 @@ class Text2img:
 def main():
     test = Text2img()
     # 简易模式：旗舰版任务，如果不需要请注释
-    test.ultra_text2img("Cao Xiong and Zhang Xuan, intense competition, classroom setting, academic rivalry, two teachers facing off, tense atmosphere, detailed facial expressions, vivid emotions, high quality, ultra realistic, 32K UHD, dynamic composition, dramatic lighting, high drama, masterpiece, best quality")
+    test.ultra_text2img(
+        "Cao Xiong and Zhang Xuan, intense competition, classroom setting, academic rivalry, two teachers facing off, tense atmosphere, detailed facial expressions, vivid emotions, high quality, ultra realistic, 32K UHD, dynamic composition, dramatic lighting, high drama, masterpiece, best quality")
     # 进阶模式：最全版本文生图，如果不需要请注释（API标准计划可用）
-    #test.text2img()
+    # test.text2img()
 
 
 if __name__ == '__main__':

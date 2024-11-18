@@ -1,11 +1,18 @@
+import os
+
 import requests
+from dotenv import load_dotenv
 
 from utils.youdao_api.utils.AuthV3Util import addAuthParams
 
-# 您的应用ID
-APP_KEY = '0a98b83f948d826d'
-# 您的应用密钥
-APP_SECRET = 'LQ92wAaRu0wRubRKoMY8zB0ggnRgVa2E'
+load_dotenv('.env', override=True)
+
+# 尝试加载本地开发环境变量文件
+load_dotenv('.local.env', override=True)
+
+# 读取环境变量
+youdao_tts_app_key = os.getenv('YOUDAO_TTS_APP_KEY')
+youdao_tts_app_secret = os.getenv('YOUDAO_TTS_APP_SECRET')
 
 
 # 合成音频保存路径, 例windows路径：PATH = "C:\\tts\\media.mp3"
@@ -19,7 +26,7 @@ def create_youdao_request(q, path, format='mp3', voiceName='youxiaoqin'):
 
     data = {'q': q, 'voiceName': voiceName, 'format': format}
 
-    addAuthParams(APP_KEY, APP_SECRET, data)
+    addAuthParams(youdao_tts_app_key, youdao_tts_app_secret, data)
 
     header = {'Content-Type': 'application/x-www-form-urlencoded'}
     res = doCall('https://openapi.youdao.com/ttsapi', header, data, 'post')

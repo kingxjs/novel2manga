@@ -6,7 +6,7 @@ import os
 from utils.youdao_api.TtsDemo import create_youdao_request
 
 
-def generate_video_with_subtitles(image_path, text_segments, output_video):
+def generate_video_with_subtitles(image_path, text_segments, output_video, chapter_title):
     """
     根据给定的图片、字幕文本和输出文件名生成带有字幕的视频。
 
@@ -29,8 +29,11 @@ def generate_video_with_subtitles(image_path, text_segments, output_video):
     # Step 2: 生成音频文件
     audio_clips = []
     durations = []
+    # 新建voices文件夹
+    if not os.path.exists("results/" + chapter_title + "/voices"):
+        os.makedirs("results/" + chapter_title + "/voices")
     for i, text in enumerate(text_segments):
-        audio_path = f"voices/audio_{i}.mp3"
+        audio_path = "results/" + chapter_title + f"/voices/audio_{i}.mp3"
         # 请替换 create_youdao_request 为你实际的音频生成函数
         try:
             create_youdao_request(text, audio_path)  # 生成音频文件
@@ -77,7 +80,7 @@ def generate_video_with_subtitles(image_path, text_segments, output_video):
         for line in wrapped_text:
             text_width, text_height = draw.textsize(line, font)
             x_text = (img.width - text_width) // 2  # 居中对齐
-            draw.text((x_text, y_text), line, (255, 255, 255), font=font)
+            draw.text((x_text, y_text), line, (240, 167, 50), font=font)
             y_text += text_height
 
         img_clip = ImageClip(np.array(img)).set_duration(durations[i])
