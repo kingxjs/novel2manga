@@ -4,9 +4,9 @@
 
 效果图如下：
 
-<img src="demo/demo.png" alt="效果图" style="width: 100%;" />
+<img src="demo/demo.mp4_000002.281.jpg" alt="效果图" style="width: 100%;" />
 
-## 方法设计
+## 🛠 方法设计
 
 - 将文本进行分段，通过标点符号句号分段，分成一个个的句子。
 - 选取多个句子为一个分镜，控制150字~200字左右为一个分镜，通过句子生成图片，生成声音，图片，本方案采用 liblib文生图，语言转文字使用 有道tts
@@ -14,7 +14,7 @@
 - 在通过 moviepy 将图片合并为视频，目前输出 mp4 格式的视频，句子作为字幕贴到视频内容的底部区域。
 
 
-## Docker 一键启动
+## 😶 Docker 一键启动
 
 ```shell
 docker-compose up --build
@@ -23,7 +23,7 @@ docker-compose up --build
 
 pip install -r requirements.txt
 
-## 支持生成绘图提示词来提高绘图质量
+## 📦 支持生成绘图提示词来提高绘图质量
 
 需要配置 智谱API 的 api key，支持代理
 
@@ -31,7 +31,7 @@ pip install -r requirements.txt
 GLM_API_KEY="your open ai api key"
 ```
 
-## 生成 相关的key
+## 📦 生成 相关的key
 
 智谱API 申请地址：https://bigmodel.cn/usercenter/apikeys
 
@@ -43,7 +43,7 @@ LibLib 申请地址：https://www.liblib.art/apis
 `GLM_API_KEY="your  api key"`
 
 
-## 开始使用
+## 📦 开始使用
 
 ```python
 #网页访问：
@@ -54,6 +54,10 @@ python app.py
 python text_to_video.py
 ```
 
-## License: MIT
+## 📄 License
 
 本项目采用 MIT 许可证授权。
+
+## 👏 Acknowledgements
+
+This repo benefits from [3D-LLM](https://github.com/bravekingzhang/text2video), [StoryDiffusion](https://github.com/HVision-NKU/StoryDiffusion) 
