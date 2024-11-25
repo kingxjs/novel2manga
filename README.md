@@ -60,4 +60,4 @@ python text_to_video.py
 
 ## 👏 Acknowledgements
 
-This repo benefits from [3D-LLM](https://github.com/bravekingzhang/text2video), [StoryDiffusion](https://github.com/HVision-NKU/StoryDiffusion) 
+This repo benefits from [text2video](https://github.com/bravekingzhang/text2video), [StoryDiffusion](https://github.com/HVision-NKU/StoryDiffusion) 
