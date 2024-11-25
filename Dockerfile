@@ -1,6 +1,3 @@
-# 使用已经安装了ffmpeg的Docker镜像作为基础镜像
-FROM giopez/ffmpeg-6.0
-
 # 安装Python 3.10和pip3
 RUN apt-get update && \
     apt-get install -y software-properties-common && \
@@ -22,13 +19,17 @@ RUN pip3 install --upgrade pip setuptools wheel
 RUN pip3 install --no-cache-dir --ignore-installed -r requirements.txt
 
 # 设置环境变量
-ARG API_TOKEN
-ARG OPEN_AI_API_KEY
-ARG OPEN_AI_BASE_URL
+ARG GLM_API_KEY
+ARG YOUDAO_TTS_APP_KEY
+ARG YOUDAO_TTS_APP_SECRET
+ARG LIBLIB_API_AK
+ARG YOUDAO_TTS_APP_SECRET
 
-ENV API_TOKEN=${API_TOKEN}
-ENV OPEN_AI_API_KEY=${OPEN_AI_API_KEY}
-ENV OPEN_AI_BASE_URL=${OPEN_AI_BASE_URL}
+ENV GLM_API_KEY=${GLM_API_KEY}
+ENV YOUDAO_TTS_APP_KEY=${YOUDAO_TTS_APP_KEY}
+ENV YOUDAO_TTS_APP_SECRET=${YOUDAO_TTS_APP_SECRET}
+ENV LIBLIB_API_AK=${LIBLIB_API_AK}
+ENV LIBLIB_API_SK=${LIBLIB_API_SK}
 
 # 暴露端口
 EXPOSE 5001

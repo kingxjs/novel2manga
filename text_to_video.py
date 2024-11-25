@@ -297,4 +297,4 @@ if __name__ == '__main__':
     # '''
     #     convertTextToVideo("stable-diffusion-v1-5", text_test)
 
-    batchConvertTextToVideo("stable-diffusion-v1-5", "file/novel.txt", "Chapter One")
+    batchConvertTextToVideo("liblib", "file/novel.txt", "Chapter One")
