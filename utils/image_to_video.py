@@ -2,11 +2,12 @@ from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import *
 import numpy as np
 import os
+import time
 
-from utils.youdao_api.TtsDemo import create_youdao_request
+from utils.tts import tts_sync
 
 
-def generate_video_with_subtitles(image_path, text_segments, output_video, chapter_title):
+def generate_video_with_subtitles(image_paths, text_segments, output_video, chapter_title):
     """
     根据给定的图片、字幕文本和输出文件名生成带有字幕的视频。
 
@@ -18,13 +19,15 @@ def generate_video_with_subtitles(image_path, text_segments, output_video, chapt
     返回:
         bool: 是否成功生成视频。
     """
-
+    images = []
+    for image_path in image_paths:
+        try:
+            image = Image.open(image_path).convert("RGB")
+            images.append(image)
+        except Exception as e:
+            print(f"图片加载失败: {e}")
+            return False
     # Step 1: 加载图片并转换为RGB模式
-    try:
-        image = Image.open(image_path).convert("RGB")
-    except Exception as e:
-        print(f"图片加载失败: {e}")
-        return False
 
     # Step 2: 生成音频文件
     audio_clips = []
@@ -36,7 +39,9 @@ def generate_video_with_subtitles(image_path, text_segments, output_video, chapt
         audio_path = "results/" + chapter_title + f"/voices/audio_{i}.mp3"
         # 请替换 create_youdao_request 为你实际的音频生成函数
         try:
-            create_youdao_request(text, audio_path)  # 生成音频文件
+            tts_sync(text, audio_path,rate=20,pitch=10)  # 生成音频文件
+            print(f"音频生成成功: {audio_path}")
+            time.sleep(0.5)  # 等待500ms，避免频繁调用API
             audio_clip = AudioFileClip(audio_path)
             audio_clips.append(audio_clip)
             durations.append(audio_clip.duration)
@@ -66,9 +71,15 @@ def generate_video_with_subtitles(image_path, text_segments, output_video, chapt
     # Step 4: 叠加字幕到图片上，生成每段文字的图像
     font_path = "fonts/HiraginoSansGB.ttc"  # 替换为实际路径
     font = ImageFont.truetype(font_path, 24, index=0)  # 使用第一个字体（index=0）
+    
+    # 根据 image_paths的数量，平均分布text_segments
+
+
     image_clips = []
+    image_count = len(image_paths)
     for i, text in enumerate(text_segments):
-        img = image.copy()
+        image_index = i * image_count // len(text_segments)
+        img = images[image_index].copy()
         draw = ImageDraw.Draw(img)
 
         max_width = img.width - 40  # 设置左右边距
@@ -98,15 +109,15 @@ def generate_video_with_subtitles(image_path, text_segments, output_video, chapt
         return False
 
 
-if __name__ == '__main__':
-    image_path = "../images/true.png"
-    text_segments = ["Have you heard?",
-                     "Cao Xiong laoshi had just competed with the academy’s number one teacher from the bottom, Teacher Zhang Xuan!"]
-    output_video = "output_video.mp4"
+# if __name__ == '__main__':
+#     image_paths = "../images/true.png"
+#     text_segments = ["Have you heard?",
+#                      "Cao Xiong laoshi had just competed with the academy’s number one teacher from the bottom, Teacher Zhang Xuan!"]
+#     output_video = "output_video.mp4"
 
-    # 调用函数生成视频
-    success = generate_video_with_subtitles(image_path, text_segments, output_video)
-    if success:
-        print("视频生成成功！")
-    else:
-        print("视频生成失败！")
+#     # 调用函数生成视频
+#     success = generate_video_with_subtitles(image_path, text_segments, output_video)
+#     if success:
+#         print("视频生成成功！")
+#     else:
+#         print("视频生成失败！")

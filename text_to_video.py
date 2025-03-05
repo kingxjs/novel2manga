@@ -6,7 +6,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import re
-from api.glm_zhipu import generate_prompt_zhipu
+from api.llm_bk import generate_prompt,take_prompt
 from api.text2img_liblib import Text2img
 from utils.cache_utils import get_cache_key, get_cache
 from utils.image_to_video import generate_video_with_subtitles
@@ -138,6 +138,7 @@ def convertTextToVideo(model, text, chapter_title, use_cache=True):
             print(f"[+] 从缓存中获取结果: {cached_result}")
             return cached_result
 
+
     # 记录当前分镜处理的句子
     logger.info(f"分镜段落(150字左右): {text}")
     # 将文本段落进行分句
@@ -146,17 +147,23 @@ def convertTextToVideo(model, text, chapter_title, use_cache=True):
     # 为输入段落生成图片
     # timeStamp = str(int(time.time()))
     cache_key = get_cache_key(text, model)
-    # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
-    text = generate_prompt_zhipu(text) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
-    logger.info(f"生成图片提示词: {text}")
-    image_path = generateImage(model, text, chapter_title, cache_key)
+    # 生成场景
+    texts = take_prompt(text)
+    image_paths = []
+    for i, item in enumerate(texts):
+        print(item)
+        # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
+        item = generate_prompt(item) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+        logger.info(f"生成图片提示词: {item}")
+        image_path = generateImage(model, item, chapter_title, cache_key+"-"+str(i))
+        image_paths.append(image_path)
     # 新建video文件夹
     if not os.path.exists("results/"+chapter_title+"/videos"):
         os.makedirs("results/"+chapter_title+"/videos")
     # 调用函数生成视频
     output_video_path = "results/"+chapter_title+"/videos/" + cache_key + \
                         "-" + model.split("/")[-1] + ".mp4"
-    success = generate_video_with_subtitles(image_path, sentences, output_video_path, chapter_title)
+    success = generate_video_with_subtitles(image_paths, sentences, output_video_path, chapter_title)
     if success:
         return output_video_path
 

@@ -1,7 +1,9 @@
 import hashlib
 import os
+import json
 from typing import List, Optional
 
+CACHE_DIR = "cache"
 
 def get_cache_key(text: str, model: str) -> str:
     """
