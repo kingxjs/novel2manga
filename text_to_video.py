@@ -6,7 +6,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import re
-from api.llm_bk import generate_prompt,take_prompt
+from api.llm_bk import generate_prompt, take_prompt, text2imageToChat
 from api.text2img_liblib import Text2img
 from utils.cache_utils import get_cache_key, get_cache
 from utils.image_to_video import generate_video_with_subtitles
@@ -21,7 +21,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
                     level=logging.INFO)
 
 # 2、获取logger （给日志器起个名字 "__name__"）
-logger = logging.getLogger(__name__)  # __name__内置变量模块名称，轻松地识别出哪个模块产生了哪些日志消息（主程序模块）
+# __name__内置变量模块名称，轻松地识别出哪个模块产生了哪些日志消息（主程序模块）
+logger = logging.getLogger(__name__)
 
 # 3、创建文件处理器，指定日志文件和日志级别（局部）---文件输出FileHandle（输出到指定文件 logs/text_to_video.log）
 file_handler = logging.FileHandler('logs/text_to_video.log', encoding='utf-8')
@@ -34,7 +35,8 @@ file_handler.setFormatter(
 logger.addHandler(file_handler)
 
 # 5.自动分割日志文件
-time_rotating_file_handler = handlers.TimedRotatingFileHandler(filename='logs/text_to_video.log', when='D')
+time_rotating_file_handler = handlers.TimedRotatingFileHandler(
+    filename='logs/text_to_video.log', when='D')
 time_rotating_file_handler.setLevel(logging.INFO)
 logger.addHandler(time_rotating_file_handler)
 
@@ -63,35 +65,53 @@ headers = {
 
 
 # auto try
-def generateImage(model, prompt, chapter_title, timeStamp):
-    liblib = Text2img()
-    # 简易模式：旗舰版任务，如果不需要请注释
-    progress = liblib.ultra_text2img(prompt)
-    # 记录响应体-包含生成图片的状态、图片地址、随机种子等信息
-    logger.info(f"生成图片响应体: {progress}")
-    # 新建results/{chapter_title}/images文件夹
+def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
     if not os.path.exists("results/"+chapter_title+"/images"):
         os.makedirs("results/"+chapter_title+"/images")
-    # 将图片写入到 images 目录下，每个图片使用(时间戳+model).png 来命名
     imagePath = "results/"+chapter_title+"/images/" + timeStamp + \
                 "-" + model.split("/")[-1] + ".png"
-    if progress['data'].get('generateStatus') == 5:
-        # 设置下载失败尝试次数
-        download_retry = 3
-        image = progress['data']['images'][0]['imageUrl']
-        logger.info(f"图片地址: {image}")
-        # 得到https://liblibai-tmp-image.liblib.cloud/img/c7bb262ad8c84ddc87c3835f55a85137/6e473d6798281d4fc305b8e46ef3035525f6b26741ed41d72a8eda393c489849.png这样地址
-        # 通过requests.get获取图片
-        while download_retry > 0:
-            try:
-                response = requests.get(image)
-                with open(imagePath, 'wb') as f:
-                    f.write(response.content)
-                break
-            except Exception as e:
-                print(f"下载图片失败: {e}")
-                download_retry -= 1
-    return imagePath
+    # liblib = Text2img(interval=10)
+    # # 简易模式：旗舰版任务，如果不需要请注释
+    # progress = liblib.ultra_text2img(prompt, controlImage=controlImage)
+    # # 记录响应体-包含生成图片的状态、图片地址、随机种子等信息
+    # logger.info(f"生成图片响应体: {progress}")
+    # # 新建results/{chapter_title}/images文件夹
+
+    # # 将图片写入到 images 目录下，每个图片使用(时间戳+model).png 来命名
+    # imagePath = "results/"+chapter_title+"/images/" + timeStamp + \
+    #             "-" + model.split("/")[-1] + ".png"
+    # imageUrl = ''
+    # if progress['data'].get('generateStatus') == 5:
+    #     # 设置下载失败尝试次数
+    #     download_retry = 3
+    #     imageUrl = progress['data']['images'][0]['imageUrl']
+    #     logger.info(f"图片地址: {imageUrl}")
+    #     # 得到https://liblibai-tmp-image.liblib.cloud/img/c7bb262ad8c84ddc87c3835f55a85137/6e473d6798281d4fc305b8e46ef3035525f6b26741ed41d72a8eda393c489849.png这样地址
+    #     # 通过requests.get获取图片
+    #     while download_retry > 0:
+    #         try:
+    #             response = requests.get(imageUrl)
+    #             with open(imagePath, 'wb') as f:
+    #                 f.write(response.content)
+    #             break
+    #         except Exception as e:
+    #             print(f"下载图片失败: {e}")
+    #             download_retry -= 1
+    imageUrl = text2imageToChat(prompt, model)
+    logger.info(f"图片地址: {imageUrl}")
+    download_retry = 3
+    # 得到https://liblibai-tmp-image.liblib.cloud/img/c7bb262ad8c84ddc87c3835f55a85137/6e473d6798281d4fc305b8e46ef3035525f6b26741ed41d72a8eda393c489849.png这样地址
+    # 通过requests.get获取图片
+    while download_retry > 0:
+        try:
+            response = requests.get(imageUrl)
+            with open(imagePath, 'wb') as f:
+                f.write(response.content)
+            return imagePath, imageUrl
+        except Exception as e:
+            print(f"下载图片失败: {e}")
+            download_retry -= 1
+    return "", imageUrl
 
 
 def clear_folder(folder_path):
@@ -129,7 +149,7 @@ def clear_results():
     clear_folder("videos")
 
 
-def convertTextToVideo(model, text, chapter_title, use_cache=True):
+def convertTextToVideo(model, text, chapter_title, use_cache=True, voice=""):
 
     # 如果使用缓存，尝试从缓存中获取分句结果，跳过该分镜
     if use_cache:
@@ -138,34 +158,45 @@ def convertTextToVideo(model, text, chapter_title, use_cache=True):
             print(f"[+] 从缓存中获取结果: {cached_result}")
             return cached_result
 
-
     # 记录当前分镜处理的句子
     logger.info(f"分镜段落(150字左右): {text}")
-    # 将文本段落进行分句
-    sentences = split_sentences(text)
 
     # 为输入段落生成图片
     # timeStamp = str(int(time.time()))
     cache_key = get_cache_key(text, model)
     # 生成场景
     texts = take_prompt(text)
-    image_paths = []
+    print(f"分镜数: {len(texts)}")
+    results = []
     for i, item in enumerate(texts):
-        print(item)
+        logger.info(f"分镜段落: {item}")
         # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
-        item = generate_prompt(item) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
-        logger.info(f"生成图片提示词: {item}")
-        image_path = generateImage(model, item, chapter_title, cache_key+"-"+str(i))
-        image_paths.append(image_path)
+        prompt = generate_prompt(
+            item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+        logger.info(f"生成图片提示词: {prompt}")
+        image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(
+            i), results[len(results)-1]["image_url"] if results and len(results) > 0 else None)
+        if image_path:
+            result = {
+                "text": item["text"],
+                "image_prompt": prompt,
+                "image_path": image_path,
+                "image_url": imageUrl,
+                "sceneContent": item["sceneContent"],
+                "sentences": split_sentences(item["sceneContent"])
+            }
+            results.append(result)
     # 新建video文件夹
     if not os.path.exists("results/"+chapter_title+"/videos"):
         os.makedirs("results/"+chapter_title+"/videos")
     # 调用函数生成视频
     output_video_path = "results/"+chapter_title+"/videos/" + cache_key + \
                         "-" + model.split("/")[-1] + ".mp4"
-    success = generate_video_with_subtitles(image_paths, sentences, output_video_path, chapter_title)
+    success = generate_video_with_subtitles(
+        results, output_video_path, chapter_title, voice=voice)
     if success:
-        return output_video_path
+        return output_video_path, results
+    return "", results
 
 
 def batchConvertTextToVideo(model, file_path, chapter_example, num_threads: int = FIXED_NUM_THREADS):
@@ -249,8 +280,10 @@ def split_novel_auto(novel_file, chapter_example, min_length=100, max_length=150
 
     # 遍历每章进行分镜切分
     for i, chapter in enumerate(chapters):
-        chapter_title = chapter_titles[i] if i < len(chapter_titles) else f"Chapter {i + 1}"
-        chapter_dir = os.path.join(os.getcwd(), "results", chapter_title.strip())
+        chapter_title = chapter_titles[i] if i < len(
+            chapter_titles) else f"Chapter {i + 1}"
+        chapter_dir = os.path.join(
+            os.getcwd(), "results", chapter_title.strip())
         os.makedirs(chapter_dir, exist_ok=True)  # 创建章节文件夹
 
         # 切分为分镜
@@ -273,7 +306,8 @@ def split_novel_auto(novel_file, chapter_example, min_length=100, max_length=150
 
         # 将分镜内容保存到文件
         for j, segment in enumerate(segments):
-            file_path = os.path.join(chapter_dir, f"storyboard--{j + 1:03d}.txt")
+            file_path = os.path.join(
+                chapter_dir, f"storyboard--{j + 1:03d}.txt")
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(segment)
     # 返回写入成功bool值
@@ -294,7 +328,7 @@ def convert_time_to_seconds(time):
     seconds = int(seconds)
     milliseconds = int(milliseconds)
     total_seconds = (hours * 3600) + (minutes * 60) + \
-                    seconds + (milliseconds / 1000)
+        seconds + (milliseconds / 1000)
     return total_seconds
 
 

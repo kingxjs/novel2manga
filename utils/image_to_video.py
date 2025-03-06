@@ -1,5 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import *
+from moviepy.video.fx import fadein, fadeout
 import numpy as np
 import os
 import time
@@ -7,49 +8,25 @@ import time
 from utils.tts import tts_sync
 
 
-def generate_video_with_subtitles(image_paths, text_segments, output_video, chapter_title):
+def generate_video_with_subtitles(data, output_video, chapter_title, voice="zh-CN-XiaoxiaoNeural"):
     """
     根据给定的图片、字幕文本和输出文件名生成带有字幕的视频。
 
     参数:
-        image_path (str): 输入图片路径。
-        text_segments (list of str): 字幕文本列表，每段文本对应一个字幕段。
+        data (str): 输入图片路径。
         output_video (str): 输出视频文件路径。
 
     返回:
         bool: 是否成功生成视频。
     """
-    images = []
-    for image_path in image_paths:
-        try:
-            image = Image.open(image_path).convert("RGB")
-            images.append(image)
-        except Exception as e:
-            print(f"图片加载失败: {e}")
-            return False
-    # Step 1: 加载图片并转换为RGB模式
-
-    # Step 2: 生成音频文件
+    # 生成音频文件
     audio_clips = []
     durations = []
-    # 新建voices文件夹
+    # # 新建voices文件夹
     if not os.path.exists("results/" + chapter_title + "/voices"):
         os.makedirs("results/" + chapter_title + "/voices")
-    for i, text in enumerate(text_segments):
-        audio_path = "results/" + chapter_title + f"/voices/audio_{i}.mp3"
-        # 请替换 create_youdao_request 为你实际的音频生成函数
-        try:
-            tts_sync(text, audio_path,rate=20,pitch=10)  # 生成音频文件
-            print(f"音频生成成功: {audio_path}")
-            time.sleep(0.5)  # 等待500ms，避免频繁调用API
-            audio_clip = AudioFileClip(audio_path)
-            audio_clips.append(audio_clip)
-            durations.append(audio_clip.duration)
-        except Exception as e:
-            print(f"音频生成或加载失败: {e}")
-            return False
 
-    # Step 3: 自动换行函数
+    # 自动换行函数
     def wrap_text(text, font, max_width):
         lines = []
         words = text.split()
@@ -68,43 +45,70 @@ def generate_video_with_subtitles(image_paths, text_segments, output_video, chap
         lines.append(current_line)
         return lines
 
-    # Step 4: 叠加字幕到图片上，生成每段文字的图像
     font_path = "fonts/HiraginoSansGB.ttc"  # 替换为实际路径
     font = ImageFont.truetype(font_path, 24, index=0)  # 使用第一个字体（index=0）
-    
-    # 根据 image_paths的数量，平均分布text_segments
-
-
     image_clips = []
-    image_count = len(image_paths)
-    for i, text in enumerate(text_segments):
-        image_index = i * image_count // len(text_segments)
-        img = images[image_index].copy()
-        draw = ImageDraw.Draw(img)
+    text_segments_size = 0
+    for j, item in enumerate(data):
+        image = Image.open(item["image_path"]).convert("RGB")
 
-        max_width = img.width - 40  # 设置左右边距
-        wrapped_text = wrap_text(text, font, max_width)
+        text_segments = item["sentences"]
+        for i, text in enumerate(text_segments):
+            img = image.copy()
+            draw = ImageDraw.Draw(img)
+            audio_path = "results/" + chapter_title + \
+                f"/voices/audio_{j}_{i}.mp3"
+            # 请替换 create_youdao_request 为你实际的音频生成函数
+            try:
+                tts_sync(text, audio_path, voice=voice,
+                         rate=20, pitch=10)  # 生成音频文件
+                print(f"音频生成成功: {audio_path}")
+                time.sleep(0.5)  # 等待500ms，避免频繁调用API
+                audio_clip = AudioFileClip(audio_path)
+                audio_clips.append(audio_clip)
+                durations.append(audio_clip.duration)
+            except Exception as e:
+                print(f"音频生成或加载失败: {e}")
+                return False
 
-        total_text_height = len(wrapped_text) * font.getsize(wrapped_text[0])[1]
-        y_text = img.height - total_text_height - 30  # 设置文本的垂直位置
+            # 叠加字幕到图片上，生成每段文字的图像
+            max_width = img.width - 40  # 设置左右边距
+            wrapped_text = wrap_text(text, font, max_width)
 
-        for line in wrapped_text:
-            text_width, text_height = draw.textsize(line, font)
-            x_text = (img.width - text_width) // 2  # 居中对齐
-            draw.text((x_text, y_text), line, (240, 167, 50), font=font)
-            y_text += text_height
+            total_text_height = len(wrapped_text) * \
+                font.getsize(wrapped_text[0])[1]
+            y_text = img.height - total_text_height - 30  # 设置文本的垂直位置
 
-        img_clip = ImageClip(np.array(img)).set_duration(durations[i])
-        image_clips.append(img_clip)
+            for line in wrapped_text:
+                text_width, text_height = draw.textsize(line, font)
+                x_text = (img.width - text_width) // 2  # 居中对齐
+                draw.text((x_text, y_text), line, (240, 167, 50), font=font)
+                y_text += text_height
 
-    # Step 5: 合成最终视频
+            img_clip = ImageClip(np.array(img)).set_duration(
+                durations[text_segments_size])
+            image_clips.append(img_clip)
+            text_segments_size += 1
+
+    # 合成最终视频
     try:
-        final_clip = concatenate_videoclips(
-            [image_clips[i].set_audio(audio_clips[i]) for i in range(len(text_segments))])
-        final_clip.write_videofile(output_video, fps=24, codec="libx264", audio_codec="aac")
+        # 使用列表推导式创建最终片段，并添加淡入淡出效果
+        final_clips = []
+        for i in range(len(image_clips)):
+            image_clips[i].set_audio(audio_clips[i])
+            clip = image_clips[i].fx(fadein.fadein, 0.5)  # 添加淡入效果
+            if i > 0:  # 在第二个及以后的片段添加淡出效果
+                clip = clip.fx(fadeout.fadeout,  0.5)
+            final_clips.append(clip)
+        # final_clip = concatenate_videoclips(
+        #     [image_clips[i].set_audio(audio_clips[i]) for i in range(text_segments_size)], method="compose")
+        final_clip = concatenate_videoclips(final_clips, method="compose")
+        final_clip.write_videofile(
+            output_video, fps=24, codec="libx264", audio_codec="aac")
         print("视频生成成功:", output_video)
         return True
     except Exception as e:
+        print(e)
         print(f"视频生成失败: {e}")
         return False
 

@@ -30,9 +30,12 @@ class Text2img:
         self.sk = sk
         self.time_stamp = int(datetime.now().timestamp() * 1000)  # 毫秒级时间戳
         self.signature_nonce = uuid.uuid1()  # 随机字符串
-        self.signature_img = self._hash_sk(self.sk, self.time_stamp, self.signature_nonce)
-        self.signature_ultra_img = self._hash_ultra_sk(self.sk, self.time_stamp, self.signature_nonce)
-        self.signature_status = self._hash_sk_status(self.sk, self.time_stamp, self.signature_nonce)
+        self.signature_img = self._hash_sk(
+            self.sk, self.time_stamp, self.signature_nonce)
+        self.signature_ultra_img = self._hash_ultra_sk(
+            self.sk, self.time_stamp, self.signature_nonce)
+        self.signature_status = self._hash_sk_status(
+            self.sk, self.time_stamp, self.signature_nonce)
         self.interval = interval
         self.headers = {'Content-Type': 'application/json'}
         self.text2img_url = self.get_image_url(self.ak, self.signature_img, self.time_stamp,
@@ -48,20 +51,25 @@ class Text2img:
 
     def _hash_sk(self, key, s_time, ro):
         """加密sk"""
-        data = "/api/generate/webui/text2img" + "&" + str(s_time) + "&" + str(ro)
-        s = base64.urlsafe_b64encode(self.hmac_sha1(key, data)).rstrip(b'=').decode()
+        data = "/api/generate/webui/text2img" + \
+            "&" + str(s_time) + "&" + str(ro)
+        s = base64.urlsafe_b64encode(
+            self.hmac_sha1(key, data)).rstrip(b'=').decode()
         return s
 
     def _hash_ultra_sk(self, key, s_time, ro):
         """加密sk"""
-        data = "/api/generate/webui/text2img/ultra" + "&" + str(s_time) + "&" + str(ro)
-        s = base64.urlsafe_b64encode(self.hmac_sha1(key, data)).rstrip(b'=').decode()
+        data = "/api/generate/webui/text2img/ultra" + \
+            "&" + str(s_time) + "&" + str(ro)
+        s = base64.urlsafe_b64encode(
+            self.hmac_sha1(key, data)).rstrip(b'=').decode()
         return s
 
     def _hash_sk_status(self, key, s_time, ro):
         """加密sk"""
         data = "/api/generate/webui/status" + "&" + str(s_time) + "&" + str(ro)
-        s = base64.urlsafe_b64encode(self.hmac_sha1(key, data)).rstrip(b'=').decode()
+        s = base64.urlsafe_b64encode(
+            self.hmac_sha1(key, data)).rstrip(b'=').decode()
         return s
 
     def get_image_url(self, ak, signature, time_stamp, signature_nonce):
@@ -79,7 +87,7 @@ class Text2img:
         url = f"https://openapi.liblibai.cloud/api/generate/webui/status?AccessKey={ak}&Signature={signature}&Timestamp={time_stamp}&SignatureNonce={signature_nonce}"
         return url
 
-    def ultra_text2img(self, prompt, templateUuid="5d7e67009b344550bc1aa6ccbfa1d7f4", aspectRatio="landscape"):
+    def ultra_text2img(self, prompt, templateUuid="5d7e67009b344550bc1aa6ccbfa1d7f4", aspectRatio="landscape", controlImage=None):
         """
         ultra json
         """
@@ -91,6 +99,11 @@ class Text2img:
                 "imgCount": 1,
             }
         }
+        if controlImage:
+            base_json['generateParams']["controlnet"] = {
+                "controlType": "depth",
+                "controlImage": controlImage
+            }
         return self.run(base_json, self.text2img_ultra_url)
 
     def text2img(self):
@@ -175,7 +188,8 @@ class Text2img:
 
                 generate_uuid = progress["data"]['generateUuid']
                 data = {"generateUuid": generate_uuid}
-                response = requests.post(url=self.generate_url, headers=self.headers, json=data)
+                response = requests.post(
+                    url=self.generate_url, headers=self.headers, json=data)
                 response.raise_for_status()
                 progress = response.json()
                 print(progress)

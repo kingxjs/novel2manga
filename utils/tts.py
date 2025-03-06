@@ -1,6 +1,5 @@
 import edge_tts
 import asyncio
-from pathlib import Path
 
 
 async def text_to_speech(text: str, output_path: str, voice: str = "zh-CN-XiaoxiaoNeural", rate: int = 0, volume: int = 0, pitch: int = 0):
@@ -30,3 +29,8 @@ def tts_sync(text: str, output_path: str, voice: str = "zh-CN-XiaoxiaoNeural", r
     Synchronous wrapper for text_to_speech function
     """
     asyncio.run(text_to_speech(text, output_path, voice, rate, volume, pitch))
+
+
+def list_voices():
+    voices = asyncio.run(edge_tts.list_voices())
+    return voices

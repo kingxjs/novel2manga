@@ -4,6 +4,7 @@ from text_to_video import convertTextToVideo
 import uuid
 import asyncio
 from configs import models
+from utils import tts
 from api.llm_bk import reinvent_prompt
 
 app = Flask(__name__)
@@ -26,7 +27,7 @@ def reinvent():
         try:
             # 获取异步生成器
             async_gen = reinvent_prompt(novel)
-            
+
             # 运行直到第一个结果
             while True:
                 try:
@@ -37,7 +38,7 @@ def reinvent():
                     break
         finally:
             loop.close()
-    
+
     # 使用同步生成器创建流式响应
     return Response(
         stream_with_context(generate()),
@@ -45,20 +46,30 @@ def reinvent():
     )
 
 # 辅助函数，用于获取异步生成器的下一个值
+
+
 async def anext_async(agen):
     return await agen.__anext__()
+
 
 @app.route('/convert', methods=['POST'])
 def convert_text_to_video():
     # 获取请求中的文本数据
     text = request.form.get('text')
     model = request.form.get('model')
+    voice = request.form.get('voice')
     # 在此处调用您的文本转视频的代码，并生成视频文件
     # videos/1686290882-anything-v4.0.mp4
-    
+
     chapter_title = str(uuid.uuid4())
-    video_path = convertTextToVideo(validate_model(model), text,chapter_title)
-    return jsonify({'video_path': video_path})
+    video_path, results = convertTextToVideo(
+        validate_model(model), text, chapter_title, voice=voice)
+    return jsonify({'video_path': video_path, "results": results})
+
+
+@app.route('/list_voices', methods=['GET'])
+def get_list_voices():
+    return jsonify(tts.list_voices())
 
 
 @app.route('/models', methods=['GET'])

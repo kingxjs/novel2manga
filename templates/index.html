@@ -30,9 +30,12 @@
       <textarea id="output" rows="5" class="border border-gray-300 rounded p-2 w-full"></textarea>
     </div>
     <div class="form-group mb-4">
-      <label for="model" class="text-lg">选择文生图模型：</label>
+      <label for="model" class="text-lg">选择文生图模型及音色：</label>
       <select id="model" class="border border-gray-300 rounded p-2">
         <option value="">Select a model</option>
+      </select>
+      <select id="voices" class="border border-gray-300 rounded p-2">
+        <option value="">Select a voices</option>
       </select>
     </div>
     <button id="convert-btn" class="btn bg-green-500 text-white rounded p-2" onclick="convertTextToVideo()">
@@ -44,24 +47,49 @@
         <span class="ml-2">正在转换...</span>
       </div>
     </div>
+    <div class="form-group mb-4">
+      <label for="text" class="text-lg">场景：</label>
+      <textarea id="scene" rows="5" class="border border-gray-300 rounded p-2 w-full"></textarea>
+    </div>
     <div id="video-player" class="mt-4"></div>
   </div>
 
   <script>
-    fetch("/models")
-      .then((response) => response.json())
-      .then((models) => {
-        const modelSelector = document.getElementById("model");
+    function models() {
+      fetch("/models")
+        .then((response) => response.json())
+        .then((models) => {
+          const modelSelector = document.getElementById("model");
 
-        // 渲染每个模型作为一个选项
-        models.forEach((model) => {
-          const option = document.createElement("option");
-          option.value = model;
-          option.textContent = model;
-          modelSelector.appendChild(option);
-        });
-      })
-      .catch((error) => console.error("Error:", error));
+          // 渲染每个模型作为一个选项
+          models.forEach((model) => {
+            const option = document.createElement("option");
+            option.value = model;
+            option.textContent = model;
+            modelSelector.appendChild(option);
+          });
+        })
+        .catch((error) => console.error("Error:", error));
+    }
+    models();
+    function list_voices() {
+      fetch("/list_voices")
+        .then((response) => response.json())
+        .then((voices) => {
+          const modelSelector = document.getElementById("voices");
+
+          // 渲染每个模型作为一个选项
+          voices.forEach((voice) => {
+            if(!voice.ShortName.startsWith("zh")) return;
+            const option = document.createElement("option");
+            option.value = voice.ShortName;
+            option.textContent = voice.ShortName + "（" + (voice.Gender == 'Female' ? '男' : '女') + "）";
+            modelSelector.appendChild(option);
+          });
+        })
+        .catch((error) => console.error("Error:", error));
+    }
+    list_voices();
     // 前端调用示例
     async function getReinventedScript() {
       var text = document.getElementById("text").value;
@@ -94,6 +122,7 @@
     function convertTextToVideo() {
       var text = document.getElementById("output").value;
       var model = document.getElementById("model").value;
+      var voice = document.getElementById("voices").value;
       var convertBtn = document.getElementById("convert-btn");
       var loading = document.getElementById("loading");
       convertBtn.disabled = true;
@@ -103,6 +132,7 @@
       const formData = new URLSearchParams();
       formData.append("text", text);
       formData.append("model", model);
+      formData.append("voice", voice);
 
       fetch("/convert", {
         method: "POST",
@@ -119,11 +149,21 @@
         })
         .then(data => {
           var videoPath = data.video_path;
+          var results = data.results;
           if (videoPath) {
             // 在页面上显示视频
             var videoPlayer = document.getElementById("video-player");
             videoPlayer.innerHTML =
               '<video src="/videos/' + videoPath + '" controls></video>';
+
+            if (results) {
+              var scenes = [];
+              for (var i = 0; i < results.length; i++) {
+                scenes.push(results[i].text);
+              }
+              var sceneEl = document.getElementById("scene");
+              sceneEl.value = scenes.join("\n\n");
+            }
           }
           else {
             alert("转换失败，请重试");
