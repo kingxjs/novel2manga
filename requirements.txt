@@ -1,5 +1,6 @@
-dotenv=0.9.9
-flask=3.0.3
-edge-tts=7.0.0
-Pillow=9.5.0
-moviepy=1.0.3
+dotenv==0.9.9
+flask==3.0.3
+edge-tts==7.0.0
+Pillow==9.5.0
+moviepy==1.0.3
+openai==1.65.3

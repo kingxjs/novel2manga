@@ -23,7 +23,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
 # 2、获取logger （给日志器起个名字 "__name__"）
 # __name__内置变量模块名称，轻松地识别出哪个模块产生了哪些日志消息（主程序模块）
 logger = logging.getLogger(__name__)
-
+if not os.path.exists("logs"):
+    os.makedirs("logs")
 # 3、创建文件处理器，指定日志文件和日志级别（局部）---文件输出FileHandle（输出到指定文件 logs/text_to_video.log）
 file_handler = logging.FileHandler('logs/text_to_video.log', encoding='utf-8')
 file_handler.setLevel(logging.INFO)  # 设置日志级别(只输出对应级别INFO的日志信息)
