@@ -105,13 +105,14 @@ def generate_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int =
         return generate_prompt(text, model, retry+1)
 
 
-def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int = 0):  # 默认模型名称修改为OpenAI的模型
+def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry: int = 0):  # 默认模型名称修改为OpenAI的模型
     MIDJOURNEY_PROMPT = '''# 你是一个视觉小说创作者，现在给你一个小说片段，帮我重新创作，并返回多个场景。
     ## 创作要求：
     - 营造引人入胜的氛围，吸引听众的注意力。
     - 用富有节奏感的语言和细腻的情感描写，增强故事的戏剧性和深度。
-    - 需要拆分的细一点（场景多一点，至少6个），尽量保证场景连贯性。
+    - 需要拆分的细一点（场景多一点，至少{num}个，每个场景一句话），尽量保证场景连贯性。
     - 对于当前场景没有的描述，需要联系上下文，补充完整，不要输出无、空等，并且不要脱离故事情节。
+    - 每个场景的内容要有连贯性，图片风格要相对一致，不要出现突兀的场景，并且保持动漫风格。
     ## 场景包含：
     - 背景
     - 时间
@@ -119,7 +120,8 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int = 0):
     - 描述
     - 视觉元素
     - 人物
-    - 场景内容（一段即可，尽量简短，突出重点）
+    - 图片风格
+    - 场景内容（一句话即可，尽量简短，突出重点）
     '''
     tools = [
         {
@@ -157,7 +159,11 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int = 0):
                                     },
                                     "character": {
                                         "type": "string",
-                                        "description": "人物（人物描述放括号里）"
+                                        "description": "人物（性别、年龄、体貌特征）"
+                                    },
+                                    "pictureStyle": {
+                                        "type": "string",
+                                        "description": "图片风格"
                                     },
                                     "sceneContent": {
                                         "type": "string",
@@ -199,6 +205,7 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int = 0):
                 视觉元素：{result["visualElement"]}
                 人物：{result["character"]}
                 场景内容：{result["sceneContent"]}
+                图片风格：{result["pictureStyle"]}
                 '''
                 texts.append({
                     "text": text,

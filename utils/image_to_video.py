@@ -46,9 +46,10 @@ def generate_video_with_subtitles(data, output_video, chapter_title, voice="zh-C
         return lines
 
     font_path = "fonts/HiraginoSansGB.ttc"  # 替换为实际路径
-    font = ImageFont.truetype(font_path, 24, index=0)  # 使用第一个字体（index=0）
+    font = ImageFont.truetype(font_path, 20, index=0)  # 使用第一个字体（index=0）
     image_clips = []
     text_segments_size = 0
+    final_clips = []
     for j, item in enumerate(data):
         image = Image.open(item["image_path"]).convert("RGB")
 
@@ -62,6 +63,14 @@ def generate_video_with_subtitles(data, output_video, chapter_title, voice="zh-C
             try:
                 tts_sync(text, audio_path, voice=voice,
                          rate=20, pitch=10)  # 生成音频文件
+                # 判断 audio_path 是否存在 并且 不是0字节
+                if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+                    # 删除 audio_path
+                    os.remove(audio_path)
+                    time.sleep(1)  # 等待500ms，避免频繁调用API
+                    tts_sync(text, audio_path, voice=voice,
+                         rate=20, pitch=10)  # 生成音频文件
+                    
                 print(f"音频生成成功: {audio_path}")
                 time.sleep(0.5)  # 等待500ms，避免频繁调用API
                 audio_clip = AudioFileClip(audio_path)
@@ -72,7 +81,7 @@ def generate_video_with_subtitles(data, output_video, chapter_title, voice="zh-C
                 return False
 
             # 叠加字幕到图片上，生成每段文字的图像
-            max_width = img.width - 40  # 设置左右边距
+            max_width = img.width - 100  # 设置左右边距
             wrapped_text = wrap_text(text, font, max_width)
 
             total_text_height = len(wrapped_text) * \
@@ -87,19 +96,25 @@ def generate_video_with_subtitles(data, output_video, chapter_title, voice="zh-C
 
             img_clip = ImageClip(np.array(img)).set_duration(
                 durations[text_segments_size])
+            img_clip = img_clip.set_audio(audio_clips[text_segments_size])
             image_clips.append(img_clip)
+
+            # clip = image_clips[text_segments_size].fx(fadein.fadein, 0.1)  # 添加淡入效果
+            # if text_segments_size > 0:  # 在第二个及以后的片段添加淡出效果
+            #     clip = clip.fx(fadeout.fadeout,  0.1)
+            final_clips.append(img_clip)
+
             text_segments_size += 1
 
     # 合成最终视频
     try:
         # 使用列表推导式创建最终片段，并添加淡入淡出效果
-        final_clips = []
-        for i in range(len(image_clips)):
-            image_clips[i].set_audio(audio_clips[i])
-            clip = image_clips[i].fx(fadein.fadein, 0.5)  # 添加淡入效果
-            if i > 0:  # 在第二个及以后的片段添加淡出效果
-                clip = clip.fx(fadeout.fadeout,  0.5)
-            final_clips.append(clip)
+        # final_clips = []
+        # for i in range(len(image_clips)):
+        #     clip = image_clips[i].fx(fadein.fadein, 0.1)  # 添加淡入效果
+        #     if i > 0:  # 在第二个及以后的片段添加淡出效果
+        #         clip = clip.fx(fadeout.fadeout,  0.1)
+        #     final_clips.append(clip)
         # final_clip = concatenate_videoclips(
         #     [image_clips[i].set_audio(audio_clips[i]) for i in range(text_segments_size)], method="compose")
         final_clip = concatenate_videoclips(final_clips, method="compose")

@@ -13,7 +13,7 @@ from utils.image_to_video import generate_video_with_subtitles
 # -*- coding: utf-8 -*-
 import logging
 
-FIXED_NUM_THREADS = 4  # 固定线程数
+FIXED_NUM_THREADS = 5  # 固定线程数
 
 # 1、设置全局的日志格式和级别
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -111,6 +111,8 @@ def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
             return imagePath, imageUrl
         except Exception as e:
             print(f"下载图片失败: {e}")
+            imageUrl = text2imageToChat(prompt, model)
+            logger.info(f"图片地址: {imageUrl}")
             download_retry -= 1
     return "", imageUrl
 
@@ -166,27 +168,67 @@ def convertTextToVideo(model, text, chapter_title, use_cache=True, voice=""):
     # timeStamp = str(int(time.time()))
     cache_key = get_cache_key(text, model)
     # 生成场景
-    texts = take_prompt(text)
+    texts = take_prompt(text,num=20)
     print(f"分镜数: {len(texts)}")
     results = []
-    for i, item in enumerate(texts):
-        logger.info(f"分镜段落: {item}")
-        # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
-        prompt = generate_prompt(
-            item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
-        logger.info(f"生成图片提示词: {prompt}")
-        image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(
-            i), results[len(results)-1]["image_url"] if results and len(results) > 0 else None)
-        if image_path:
-            result = {
-                "text": item["text"],
-                "image_prompt": prompt,
-                "image_path": image_path,
-                "image_url": imageUrl,
-                "sceneContent": item["sceneContent"],
-                "sentences": split_sentences(item["sceneContent"])
-            }
-            results.append(result)
+
+    # for i, item in enumerate(texts):
+    #     logger.info(f"分镜段落: {item}")
+    #     # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
+    #     prompt = generate_prompt(
+    #         item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+    #     logger.info(f"生成图片提示词: {prompt}")
+    #     image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(
+    #         i), results[len(results)-1]["image_url"] if results and len(results) > 0 else None)
+    #     if image_path:
+    #         result = {
+    #             "text": item["text"],
+    #             "image_prompt": prompt,
+    #             "image_path": image_path,
+    #             "image_url": imageUrl,
+    #             "sceneContent": item["sceneContent"],
+    #             "sentences": split_sentences(item["sceneContent"])
+    #         }
+    #         results.append(result)
+    # 使用线程池并行处理图像生成
+    with ThreadPoolExecutor(max_workers=FIXED_NUM_THREADS) as executor:
+        def process_scene(item_with_index):
+            i, item = item_with_index
+            logger.info(f"分镜段落: {item}")
+            # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
+            prompt = generate_prompt(
+                item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+            logger.info(f"生成图片提示词: {prompt}")
+            
+            # 获取控制图像（如果有的话）
+            control_image = None
+            if results and len(results) > 0:
+                control_image = results[len(results)-1]["image_url"]
+            
+            image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(i), control_image)
+            
+            if image_path:
+                return {
+                    "text": item["text"],
+                    "image_prompt": prompt,
+                    "image_path": image_path,
+                    "image_url": imageUrl,
+                    "sceneContent": item["sceneContent"],
+                    "sentences": split_sentences(item["sceneContent"]),
+                    "index": i  # 保存原始索引以便保持顺序
+                }
+            return None
+        
+        # 将索引与项目配对，以便我们可以在处理后正确排序结果
+        scene_results = list(executor.map(process_scene, enumerate(texts)))
+        
+        # 过滤掉None结果并按原始索引排序
+        scene_results = [result for result in scene_results if result is not None]
+        scene_results.sort(key=lambda x: x.pop("index"))  # 移除临时索引并排序
+        
+        # 添加到结果列表
+        results.extend(scene_results)
+    
     # 新建video文件夹
     if not os.path.exists("results/"+chapter_title+"/videos"):
         os.makedirs("results/"+chapter_title+"/videos")
