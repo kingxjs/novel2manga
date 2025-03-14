@@ -14,6 +14,17 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
-        }
+        },
+        {
+            "name": "image_to_video",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/utils/image_to_video.py", // 替换为您的主文件路径
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
     ]
 }

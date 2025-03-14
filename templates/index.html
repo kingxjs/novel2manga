@@ -1,184 +1,499 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>文本转视频</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.15/dist/tailwind.min.css" rel="stylesheet" />
-  <style>
-    #video-player {
-      width: 100%;
-      height: auto;
-      margin-top: 20px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Novel to Manga</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.15/dist/tailwind.min.css" rel="stylesheet" />
 </head>
 
-<body>
-  <div class="container mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-4">文本转视频</h1>
-    <div class="form-group mb-4">
-      <label for="text" class="text-lg">输入文本：</label>
-      <textarea id="text" rows="5" class="border border-gray-300 rounded p-2 w-full"></textarea>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold text-center my-6">Novel to Manga</h1>
+
+        <!-- 主体内容区域 - 左右结构 -->
+        <div class="flex flex-col lg:flex-row gap-4 mb-4">
+            <!-- 左侧区域 - 输入文本和场景设置 -->
+            <div class="w-full lg:w-1/3 bg-white p-4 rounded-lg shadow">
+                <div class="mb-4">
+                    <label for="novelText" class="block text-sm font-medium text-gray-700 mb-2">输入小说文本</label>
+                    <textarea id="novelText" rows="10"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="请输入小说文本..."></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label for="sceneCount"
+                        class="block text-sm font-medium text-gray-700 mb-2">场景数量（至少生产数量，最终还是根据文本生产）</label>
+                    <input type="number" id="sceneCount" min="1" value="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <button id="generateScenes"
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">生成场景</button>
+            </div>
+
+            <!-- 右侧区域 - 场景显示 -->
+            <div class="w-full lg:w-2/3 bg-white p-4 rounded-lg shadow">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold">场景预览</h2>
+                    <button id="addScene"
+                        class="flex-none bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20"
+                            fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        添加场景
+                    </button>
+                </div>
+                <!-- 场景容器 - 有高度限制和滚动条 -->
+                <div id="scenesContainer" class="grid grid-cols-1 gap-4 overflow-y-auto p-2" style="height: 400px;">
+
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部区域 - 视频转换 -->
+        <div class="w-full bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-3">视频转换</h2>
+            <div class="flex flex-col lg:flex-row gap-4 mb-4">
+                <div class="w-full lg:w-1/3 bg-white p-4 rounded-lg shadow">
+                    <div class="mb-4">
+                        <label for="model" class="block text-sm font-medium text-gray-700 mb-2">文生图模型</label>
+                        <select id="model"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="voices" class="block text-sm font-medium text-gray-700 mb-2">音色</label>
+                        <select id="voices"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                        </select>
+                    </div>
+
+                    <button id="generateVideo"
+                        class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors">生成视频</button>
+                </div>
+
+                <div id="videoPreview" class="w-full lg:w-2/3 bg-white p-4 rounded-lg shadow bg-gray-200 rounded-lg">
+                    <p class="text-gray-500">视频预览将在这里显示</p>
+                </div>
+            </div>
+        </div>
     </div>
-    <button id="convert-btn" class="btn bg-green-500 text-white rounded p-2" onclick="getReinventedScript()">
-      优化
-    </button>
-    <div class="form-group mb-4">
-      <label for="text" class="text-lg">优化文本：</label>
-      <textarea id="output" rows="5" class="border border-gray-300 rounded p-2 w-full"></textarea>
-    </div>
-    <div class="form-group mb-4">
-      <label for="model" class="text-lg">选择文生图模型及音色：</label>
-      <select id="model" class="border border-gray-300 rounded p-2">
-        <option value="">Select a model</option>
-      </select>
-      <select id="voices" class="border border-gray-300 rounded p-2">
-        <option value="">Select a voices</option>
-      </select>
-    </div>
-    <button id="convert-btn" class="btn bg-green-500 text-white rounded p-2" onclick="convertTextToVideo()">
-      确定
-    </button>
-    <div id="loading" class="mt-4 hidden">
-      <div class="flex justify-center items-center">
-        <div class="loader"></div>
-        <span class="ml-2">正在转换...</span>
-      </div>
-    </div>
-    <div class="form-group mb-4">
-      <label for="text" class="text-lg">场景：</label>
-      <textarea id="scene" rows="5" class="border border-gray-300 rounded p-2 w-full"></textarea>
-    </div>
-    <div id="video-player" class="mt-4"></div>
-  </div>
 
-  <script>
-    function models() {
-      fetch("/models")
-        .then((response) => response.json())
-        .then((models) => {
-          const modelSelector = document.getElementById("model");
+    <script>
+        function models() {
+            fetch("/models")
+                .then((response) => response.json())
+                .then((models) => {
+                    const modelSelector = document.getElementById("model");
 
-          // 渲染每个模型作为一个选项
-          models.forEach((model) => {
-            const option = document.createElement("option");
-            option.value = model;
-            option.textContent = model;
-            modelSelector.appendChild(option);
-          });
-        })
-        .catch((error) => console.error("Error:", error));
-    }
-    models();
-    function list_voices() {
-      fetch("/list_voices")
-        .then((response) => response.json())
-        .then((voices) => {
-          const modelSelector = document.getElementById("voices");
-
-          // 渲染每个模型作为一个选项
-          voices.forEach((voice) => {
-            if(!voice.ShortName.startsWith("zh")) return;
-            const option = document.createElement("option");
-            option.value = voice.ShortName;
-            option.textContent = voice.ShortName + "（" + (voice.Gender == 'Female' ? '男' : '女') + "）";
-            modelSelector.appendChild(option);
-          });
-        })
-        .catch((error) => console.error("Error:", error));
-    }
-    list_voices();
-    // 前端调用示例
-    async function getReinventedScript() {
-      var text = document.getElementById("text").value;
-      const response = await fetch('/reinvent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text }),
-      });
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let result = '';
-
-      // 读取流式响应
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        result += chunk;
-
-        // 实时更新UI
-        document.getElementById('output').textContent = result;
-      }
-
-      return result;
-    }
-    function convertTextToVideo() {
-      var text = document.getElementById("output").value;
-      var model = document.getElementById("model").value;
-      var voice = document.getElementById("voices").value;
-      var convertBtn = document.getElementById("convert-btn");
-      var loading = document.getElementById("loading");
-      convertBtn.disabled = true;
-      loading.classList.remove("hidden");
-
-      // 使用fetch API替代XMLHttpRequest
-      const formData = new URLSearchParams();
-      formData.append("text", text);
-      formData.append("model", model);
-      formData.append("voice", voice);
-
-      fetch("/convert", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: formData
-      })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Network response was not ok');
-          }
-          return response.json();
-        })
-        .then(data => {
-          var videoPath = data.video_path;
-          var results = data.results;
-          if (videoPath) {
-            // 在页面上显示视频
-            var videoPlayer = document.getElementById("video-player");
-            videoPlayer.innerHTML =
-              '<video src="/videos/' + videoPath + '" controls></video>';
-
-            if (results) {
-              var scenes = [];
-              for (var i = 0; i < results.length; i++) {
-                scenes.push(results[i].text);
-              }
-              var sceneEl = document.getElementById("scene");
-              sceneEl.value = scenes.join("\n\n");
+                    // 渲染每个模型作为一个选项
+                    models.forEach((model) => {
+                        const option = document.createElement("option");
+                        option.value = model;
+                        option.textContent = model;
+                        modelSelector.appendChild(option);
+                    });
+                })
+                .catch((error) => console.error("Error:", error));
+        }
+        models();
+        function list_voices() {
+            fetch("/list_voices")
+                .then((response) => response.json())
+                .then((voices) => {
+                    const modelSelector = document.getElementById("voices");
+                    // 渲染每个模型作为一个选项
+                    voices.forEach((voice) => {
+                        if (!voice.ShortName.startsWith("zh")) return;
+                        const option = document.createElement("option");
+                        option.value = voice.ShortName;
+                        option.textContent = voice.ShortName + "（" + (voice.Gender == 'Female' ? '男' : '女') + "）";
+                        modelSelector.appendChild(option);
+                    });
+                })
+                .catch((error) => console.error("Error:", error));
+        }
+        list_voices();
+        var scenesData = []
+        // 这里可以添加JavaScript代码来处理场景生成和视频转换逻辑
+        function setScenes(result) {
+            var scenes = result.results;
+            if (!scenes) {
+                return;
             }
-          }
-          else {
-            alert("转换失败，请重试");
-          }
-          convertBtn.disabled = false;
-          loading.classList.add("hidden");
-        })
-        .catch(error => {
-          console.error("Error:", error);
-          alert("请求失败，请重试");
-          convertBtn.disabled = false;
-          loading.classList.add("hidden");
+            scenesData = scenes;
+            var scenesEl = document.getElementById("scenesContainer");
+            scenesEl.innerHTML = "";
+            for (var i = 0; i < scenesData.length; i++) {
+                var scene = scenesData[i];
+                var text = `
+背景：${scene["contexts"] || ""}
+氛围：${scene["milieu"] || ""}
+时间：${scene["timing"] || ""}
+描述：${scene["descriptive"] || ""}
+视觉元素：${scene["visualElement"] || ""}
+人物：${scene["character"] || ""}
+图片风格：${scene["pictureStyle"] || ""}`
+                var html = `<div class="scene border rounded-lg p-3 bg-gray-50">
+                        <p class="text-sm text-gray-600">场景 ${(i + 1)}</p>
+                        <div class="mt-2 rounded">
+                            <textarea rows='7' class='text border border-gray-300 rounded p-2 w-full'>${text}</textarea>
+                            <textarea rows='2' class='content border border-gray-300 rounded p-2 w-full'>${scene["sceneContent"] || ""}</textarea>
+                        </div>
+                    </div>`
+                var sceneEl = document.createElement("div");
+                sceneEl.className = "scene border rounded-lg p-3 bg-gray-50";
+                sceneEl.innerHTML = html;
+                scenesEl.appendChild(sceneEl);
+            }
+            scenesEl.scrollTop = scenesEl.scrollHeight;
+        }
+        async function take() {
+            const novelText = document.getElementById('novelText').value;
+            const sceneCount = document.getElementById('sceneCount').value;
+            var generateScenes = document.getElementById("generateScenes");
+            generateScenes.disabled = true;
+            generateScenes.value = "正在转换"
+            try {
+                const response = await fetch('/take', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: novelText, num: sceneCount }),
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let result = '';
+
+                // 读取流式响应
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    result += chunk;
+                    setScenes(parseJSON(result))
+                }
+                setScenes(result)
+            } catch (error) {
+                console.error(error)
+            }
+
+            generateScenes.disabled = false;
+            generateScenes.value = "转换为场景"
+        }
+        document.getElementById('generateScenes').addEventListener('click', function () {
+            take();
         });
-    }
-  </script>
+        document.getElementById('addScene').addEventListener('click', function () {
+            var scenesEl = document.getElementById("scenesContainer");
+            var text = `
+背景：
+氛围：
+时间：
+描述：
+视觉元素：
+人物：
+图片风格：`
+            var html = `<div class="scene border rounded-lg p-3 bg-gray-50">
+                        <p class="text-sm text-gray-600">场景 ${(scenesData.length+1)}</p>
+                        <div class="mt-2 rounded">
+                            <textarea rows='7' class='text border border-gray-300 rounded p-2 w-full'>${text}</textarea>
+                            <textarea rows='2' class='content border border-gray-300 rounded p-2 w-full'></textarea>
+                        </div>
+                    </div>`
+            var sceneEl = document.createElement("div");
+            sceneEl.className = "scene border rounded-lg p-3 bg-gray-50";
+            sceneEl.innerHTML = html;
+            scenesEl.appendChild(sceneEl);
+            scenesData.push({ });
+        });
+
+        function convertTextToVideo() {
+            var model = document.getElementById("model").value;
+            var voice = document.getElementById("voices").value;
+            var convertBtn = document.getElementById("generateVideo");
+            convertBtn.disabled = true;
+            var scenesEl = document.getElementById("scenesContainer");
+            // 循环子节点
+            var scenes = [];
+            for (var i = 0; i < scenesEl.children.length; i++) {
+                var sceneEl = scenesEl.children[i];
+                var text = sceneEl.querySelector(".text").value;
+                var content = sceneEl.querySelector(".content").value;
+                scenes.push({ text: text, sceneContent: content });
+            }
+            fetch("/convert", {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ texts: scenes, model: model, voice: voice }),
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    var videoPath = data.video_path;
+                    var results = data.results;
+                    if (videoPath) {
+                        // 在页面上显示视频
+                        var videoPlayer = document.getElementById("videoPreview");
+                        videoPlayer.innerHTML =
+                            '<video src="/videos/' + videoPath + '" controls></video>';
+                    }
+                    else {
+                        alert("转换失败，请重试");
+                    }
+                    convertBtn.disabled = false;
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    alert("请求失败，请重试");
+                    convertBtn.disabled = false;
+                });
+        }
+        document.getElementById('generateVideo').addEventListener('click', function () {
+            convertTextToVideo();
+        });
+        function parseJSON(e) {
+            function untruncateJson(json) {
+                var contextStack = ["topLevel" /* TOP_LEVEL */];
+                var position = 0;
+                var respawnPosition;
+                var respawnStackLength;
+                var respawnReason;
+                var push = function (context) { return contextStack.push(context); };
+                var replace = function (context) {
+                    return (contextStack[contextStack.length - 1] = context);
+                };
+                var isWhitespace = function (char) {
+                    return "\u0020\u000D\u000A\u0009".indexOf(char) >= 0;
+                }
+                var setRespawn = function (reason) {
+                    if (respawnPosition == null) {
+                        respawnPosition = position;
+                        respawnStackLength = contextStack.length;
+                        respawnReason = reason;
+                    }
+                };
+                var clearRespawn = function (reason) {
+                    if (reason === respawnReason) {
+                        respawnPosition = undefined;
+                        respawnStackLength = undefined;
+                        respawnReason = undefined;
+                    }
+                };
+                var pop = function () { return contextStack.pop(); };
+                var dontConsumeCharacter = function () { return position--; };
+                var startAny = function (char) {
+                    if ("0" <= char && char <= "9") {
+                        push("number" /* NUMBER */);
+                        return;
+                    }
+                    switch (char) {
+                        case '"':
+                            push("string" /* STRING */);
+                            return;
+                        case "-":
+                            push("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                            return;
+                        case "t":
+                            push("true" /* TRUE */);
+                            return;
+                        case "f":
+                            push("false" /* FALSE */);
+                            return;
+                        case "n":
+                            push("null" /* NULL */);
+                            return;
+                        case "[":
+                            push("arrayNeedsValue" /* ARRAY_NEEDS_VALUE */);
+                            return;
+                        case "{":
+                            push("objectNeedsKey" /* OBJECT_NEEDS_KEY */);
+                            return;
+                    }
+                };
+                for (var length = json.length; position < length; position++) {
+                    var char = json[position];
+                    switch (contextStack[contextStack.length - 1]) {
+                        case "topLevel" /* TOP_LEVEL */:
+                            startAny(char);
+                            break;
+                        case "string" /* STRING */:
+                            switch (char) {
+                                case '"':
+                                    pop();
+                                    break;
+                                case "\\":
+                                    setRespawn("stringEscape" /* STRING_ESCAPE */);
+                                    push("stringEscaped" /* STRING_ESCAPED */);
+                                    break;
+                            }
+                            break;
+                        case "stringEscaped" /* STRING_ESCAPED */:
+                            if (char === "u") {
+                                push("stringUnicode" /* STRING_UNICODE */);
+                            }
+                            else {
+                                clearRespawn("stringEscape" /* STRING_ESCAPE */);
+                                pop();
+                            }
+                            break;
+                        case "stringUnicode" /* STRING_UNICODE */:
+                            if (position - json.lastIndexOf("u", position) === 4) {
+                                clearRespawn("stringEscape" /* STRING_ESCAPE */);
+                                pop();
+                            }
+                            break;
+                        case "number" /* NUMBER */:
+                            if (char === ".") {
+                                replace("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                            }
+                            else if (char === "e" || char === "E") {
+                                replace("numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */);
+                            }
+                            else if (char < "0" || char > "9") {
+                                dontConsumeCharacter();
+                                pop();
+                            }
+                            break;
+                        case "numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */:
+                            replace("number" /* NUMBER */);
+                            break;
+                        case "numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */:
+                            if (char === "+" || char === "-") {
+                                replace("numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */);
+                            }
+                            else {
+                                replace("number" /* NUMBER */);
+                            }
+                            break;
+                        case "true" /* TRUE */:
+                        case "false" /* FALSE */:
+                        case "null" /* NULL */:
+                            if (char < "a" || char > "z") {
+                                dontConsumeCharacter();
+                                pop();
+                            }
+                            break;
+                        case "arrayNeedsValue" /* ARRAY_NEEDS_VALUE */:
+                            if (char === "]") {
+                                pop();
+                            }
+                            else if (!isWhitespace(char)) {
+                                clearRespawn("collectionItem" /* COLLECTION_ITEM */);
+                                replace("arrayNeedsComma" /* ARRAY_NEEDS_COMMA */);
+                                startAny(char);
+                            }
+                            break;
+                        case "arrayNeedsComma" /* ARRAY_NEEDS_COMMA */:
+                            if (char === "]") {
+                                pop();
+                            }
+                            else if (char === ",") {
+                                setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                                replace("arrayNeedsValue" /* ARRAY_NEEDS_VALUE */);
+                            }
+                            break;
+                        case "objectNeedsKey" /* OBJECT_NEEDS_KEY */:
+                            if (char === "}") {
+                                pop();
+                            }
+                            else if (char === '"') {
+                                setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                                replace("objectNeedsColon" /* OBJECT_NEEDS_COLON */);
+                                push("string" /* STRING */);
+                            }
+                            break;
+                        case "objectNeedsColon" /* OBJECT_NEEDS_COLON */:
+                            if (char === ":") {
+                                replace("objectNeedsValue" /* OBJECT_NEEDS_VALUE */);
+                            }
+                            break;
+                        case "objectNeedsValue" /* OBJECT_NEEDS_VALUE */:
+                            if (!isWhitespace(char)) {
+                                clearRespawn("collectionItem" /* COLLECTION_ITEM */);
+                                replace("objectNeedsComma" /* OBJECT_NEEDS_COMMA */);
+                                startAny(char);
+                            }
+                            break;
+                        case "objectNeedsComma" /* OBJECT_NEEDS_COMMA */:
+                            if (char === "}") {
+                                pop();
+                            }
+                            else if (char === ",") {
+                                setRespawn("collectionItem" /* COLLECTION_ITEM */);
+                                replace("objectNeedsKey" /* OBJECT_NEEDS_KEY */);
+                            }
+                            break;
+                    }
+                }
+                if (respawnStackLength != null) {
+                    contextStack.length = respawnStackLength;
+                }
+                var result = [
+                    respawnPosition != null ? json.slice(0, respawnPosition) : json,
+                ];
+                var finishWord = function (word) {
+                    return result.push(word.slice(json.length - json.lastIndexOf(word[0])));
+                };
+                for (var i = contextStack.length - 1; i >= 0; i--) {
+                    switch (contextStack[i]) {
+                        case "string" /* STRING */:
+                            result.push('"');
+                            break;
+                        case "numberNeedsDigit" /* NUMBER_NEEDS_DIGIT */:
+                        case "numberNeedsExponent" /* NUMBER_NEEDS_EXPONENT */:
+                            result.push("0");
+                            break;
+                        case "true" /* TRUE */:
+                            finishWord("true");
+                            break;
+                        case "false" /* FALSE */:
+                            finishWord("false");
+                            break;
+                        case "null" /* NULL */:
+                            finishWord("null");
+                            break;
+                        case "arrayNeedsValue" /* ARRAY_NEEDS_VALUE */:
+                        case "arrayNeedsComma" /* ARRAY_NEEDS_COMMA */:
+                            result.push("]");
+                            break;
+                        case "objectNeedsKey" /* OBJECT_NEEDS_KEY */:
+                        case "objectNeedsColon" /* OBJECT_NEEDS_COLON */:
+                        case "objectNeedsValue" /* OBJECT_NEEDS_VALUE */:
+                        case "objectNeedsComma" /* OBJECT_NEEDS_COMMA */:
+                            result.push("}");
+                            break;
+                    }
+                }
+                return result.join("");
+            }
+            var jsonStr = untruncateJson(e);
+            if (jsonStr) {
+                try {
+                    return JSON.parse(jsonStr.replace(/'/g, '"').replace(/\n/g, ''));
+                } catch (e) {
+                    console.error(e)
+                }
+            }
+            return undefined;
+        }
+    </script>
 </body>
 
 </html>

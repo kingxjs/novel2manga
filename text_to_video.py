@@ -1,6 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 from logging import handlers
+from logging.handlers import RotatingFileHandler
 
 import requests
 import os
@@ -26,27 +27,26 @@ logger = logging.getLogger(__name__)
 if not os.path.exists("logs"):
     os.makedirs("logs")
 # 3、创建文件处理器，指定日志文件和日志级别（局部）---文件输出FileHandle（输出到指定文件 logs/text_to_video.log）
-file_handler = logging.FileHandler('logs/text_to_video.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)  # 设置日志级别(只输出对应级别INFO的日志信息)
+file_handler = RotatingFileHandler(
+    'logs/text_to_video.log',
+    maxBytes=1024*1024*5,  # 5MB
+    backupCount=3,         # 保留3个备份
+    encoding='utf-8',
+    delay=True             # 延迟打开文件，直到第一次写入
+)
+file_handler.setLevel(logging.INFO)
 # 设置日志格式
 file_handler.setFormatter(
     logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s', '%m/%d/%Y %H:%M:%S'))
 
-# 4、添加文件处理器到logger
+# 添加文件处理器到logger
 logger.addHandler(file_handler)
-
-# 5.自动分割日志文件
-time_rotating_file_handler = handlers.TimedRotatingFileHandler(
-    filename='logs/text_to_video.log', when='D')
-time_rotating_file_handler.setLevel(logging.INFO)
-logger.addHandler(time_rotating_file_handler)
 
 # logging.debug('debug级别，一般用来打印一些调试信息，级别最低')
 # logging.info('info级别，一般用来打印一些正常的操作信息')
 # logging.warning('waring级别，一般用来打印警告信息')
 # logging.error('error级别，一般用来打印一些错误信息')
 # logging.critical('critical级别，一般用来打印一些致命的错误信息，等级最高')
-
 
 load_dotenv('.env', override=True)
 
@@ -152,44 +152,26 @@ def clear_results():
     clear_folder("videos")
 
 
-def convertTextToVideo(model, text, chapter_title, use_cache=True, voice=""):
+def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice=""):
 
     # 如果使用缓存，尝试从缓存中获取分句结果，跳过该分镜
-    if use_cache:
-        cached_result = get_cache(text, model, chapter_title)
-        if cached_result:
-            print(f"[+] 从缓存中获取结果: {cached_result}")
-            return cached_result
+    # if use_cache:
+    #     cached_result = get_cache(text, model, chapter_title)
+    #     if cached_result:
+    #         print(f"[+] 从缓存中获取结果: {cached_result}")
+    #         return cached_result
 
     # 记录当前分镜处理的句子
-    logger.info(f"分镜段落(150字左右): {text}")
+    # logger.info(f"分镜段落(150字左右): {text}")
 
     # 为输入段落生成图片
-    # timeStamp = str(int(time.time()))
-    cache_key = get_cache_key(text, model)
+    timeStamp = str(int(time.time()))
+    cache_key = timeStamp
     # 生成场景
-    texts = take_prompt(text,num=20)
+    # texts = take_prompt(text,num=20)
     print(f"分镜数: {len(texts)}")
     results = []
 
-    # for i, item in enumerate(texts):
-    #     logger.info(f"分镜段落: {item}")
-    #     # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
-    #     prompt = generate_prompt(
-    #         item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
-    #     logger.info(f"生成图片提示词: {prompt}")
-    #     image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(
-    #         i), results[len(results)-1]["image_url"] if results and len(results) > 0 else None)
-    #     if image_path:
-    #         result = {
-    #             "text": item["text"],
-    #             "image_prompt": prompt,
-    #             "image_path": image_path,
-    #             "image_url": imageUrl,
-    #             "sceneContent": item["sceneContent"],
-    #             "sentences": split_sentences(item["sceneContent"])
-    #         }
-    #         results.append(result)
     # 使用线程池并行处理图像生成
     with ThreadPoolExecutor(max_workers=FIXED_NUM_THREADS) as executor:
         def process_scene(item_with_index):
@@ -197,38 +179,61 @@ def convertTextToVideo(model, text, chapter_title, use_cache=True, voice=""):
             logger.info(f"分镜段落: {item}")
             # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
             prompt = generate_prompt(
-                item["text"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+                item["text"]+"\n场景内容："+item["sceneContent"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
             logger.info(f"生成图片提示词: {prompt}")
-            
+
+            # # 获取控制图像（如果有的话）
+            # control_image = None
+            # if results and len(results) > 0:
+            #     control_image = results[len(results)-1]["image_url"]
+
+            # image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(i), control_image)
+
+            # if image_path:
+            #     return {
+            #         "text": item["text"],
+            #         "image_prompt": prompt,
+            #         "image_path": image_path,
+            #         "image_url": imageUrl,
+            #         "sceneContent": item["sceneContent"],
+            #         "sentences": split_sentences(item["sceneContent"]),
+            #         "index": i  # 保存原始索引以便保持顺序
+            #     }
+
+            return {
+                "text": item["text"],
+                "image_prompt": prompt,
+                "image_path": "",
+                "image_url": "",
+                "sceneContent": item["sceneContent"],
+                "sentences": split_sentences(item["sceneContent"]),
+                "index": i  # 保存原始索引以便保持顺序
+            }
+
+        # 将索引与项目配对，以便我们可以在处理后正确排序结果
+        scene_results = list(executor.map(process_scene, enumerate(texts)))
+
+        # 过滤掉None结果并按原始索引排序
+        scene_results = [
+            result for result in scene_results if result is not None]
+        scene_results.sort(key=lambda x: x.pop("index"))  # 移除临时索引并排序
+
+        # 添加到结果列表
+        results.extend(scene_results)
+
+        for i, result in enumerate(results):
             # 获取控制图像（如果有的话）
             control_image = None
             if results and len(results) > 0:
-                control_image = results[len(results)-1]["image_url"]
-            
-            image_path, imageUrl = generateImage(model, prompt, chapter_title, cache_key+"-"+str(i), control_image)
-            
+                control_image = results[len(results)-1]["image_path"]
+
+            image_path, imageUrl = generateImage(
+                model, result["image_prompt"], chapter_title, cache_key+"-"+str(i), control_image)
+
             if image_path:
-                return {
-                    "text": item["text"],
-                    "image_prompt": prompt,
-                    "image_path": image_path,
-                    "image_url": imageUrl,
-                    "sceneContent": item["sceneContent"],
-                    "sentences": split_sentences(item["sceneContent"]),
-                    "index": i  # 保存原始索引以便保持顺序
-                }
-            return None
-        
-        # 将索引与项目配对，以便我们可以在处理后正确排序结果
-        scene_results = list(executor.map(process_scene, enumerate(texts)))
-        
-        # 过滤掉None结果并按原始索引排序
-        scene_results = [result for result in scene_results if result is not None]
-        scene_results.sort(key=lambda x: x.pop("index"))  # 移除临时索引并排序
-        
-        # 添加到结果列表
-        results.extend(scene_results)
-    
+                result["image_path"] = image_path
+                result["image_url"] = imageUrl
+
     # 新建video文件夹
     if not os.path.exists("results/"+chapter_title+"/videos"):
         os.makedirs("results/"+chapter_title+"/videos")

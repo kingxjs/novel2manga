@@ -17,6 +17,11 @@ base_url = os.getenv('OPEN_AI_BASE_URL')  # 如果有自定义API端点需要添
 image_api_key = os.getenv('IMAGE_OPEN_API_KEY', api_key)  # 变量名可以保持不变或改为更通用的名称
 image_base_url = os.getenv('IMAGE_OPEN_AI_BASE_URL',
                            base_url)  # 如果有自定义API端点需要添加这个变量
+
+DEFAULT_OPENAI_MODEL = os.getenv('DEFAULT_OPENAI_MODEL')  # 如果有自定义API端点需要添加这个变量
+DEFAULT_OPENAI_IMAGE_MODEL = os.getenv(
+    'DEFAULT_OPENAI_MODEL')  # 如果有自定义API端点需要添加这个变量
+
 client = OpenAI(
     api_key=api_key,  # 使用api_key而非api_token参数
     base_url=base_url,  # 如果需要自定义API端点
@@ -30,8 +35,9 @@ imageClient = OpenAI(
 # 默认模型名称修改为OpenAI的模型
 
 
-async def reinvent_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5"):
-
+async def reinvent_prompt(text, model: str = None):
+    if not model:
+        model = DEFAULT_OPENAI_MODEL
     MIDJOURNEY_PROMPT = '''ROLE DEFINITION: I am the Storyteller, responsible for telling stories in a vivid and engaging narrative that emphasizes emotion and atmosphere, taking the listener deeper into the story's situation.
 
     TASK REQUIREMEN T: Please re-create this novel in the style of a storyteller, focusing on the following areas:
@@ -59,7 +65,9 @@ async def reinvent_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5"):
 # 封装上述代码成工具函数
 
 
-def generate_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int = 0) -> str:  # 默认模型名称修改为OpenAI的模型
+def generate_prompt(text, model: str = None, retry: int = 0) -> str:  # 默认模型名称修改为OpenAI的模型
+    if not model:
+        model = DEFAULT_OPENAI_MODEL
     #     MIDJOURNEY_PROMPT = '''Hello, you are an expert in generating midjourney prompt words, users give you a description, you generate the corresponding prompt words!
 
     #     Keep in mind that the prompt words you are generating are in English and may be in a format similar to:
@@ -105,7 +113,10 @@ def generate_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5", retry: int =
         return generate_prompt(text, model, retry+1)
 
 
-def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry: int = 0):  # 默认模型名称修改为OpenAI的模型
+# 默认模型名称修改为OpenAI的模型
+async def take_prompt_stream(text, model: str = None, num: int = 10, retry: int = 0):
+    if not model:
+        model = DEFAULT_OPENAI_MODEL
     MIDJOURNEY_PROMPT = '''# 你是一个视觉小说创作者，现在给你一个小说片段，帮我重新创作，并返回多个场景。
     ## 创作要求：
     - 营造引人入胜的氛围，吸引听众的注意力。
@@ -121,7 +132,7 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry
     - 视觉元素
     - 人物
     - 图片风格
-    - 场景内容（一句话即可，尽量简短，突出重点）
+    - 场景内容（一句话即可，尽量简短，突出重点，可以包含对话）
     '''
     tools = [
         {
@@ -182,6 +193,112 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry
     ]
 
     try:
+        response_stream = client.chat.completions.create(
+            stream=True,
+            model=model,
+            messages=[{"role": "system",
+                       "content": MIDJOURNEY_PROMPT}, {"role": "user", "content": text}],
+            tools=tools,
+            tool_choice={"type": "function",
+                         "function": {"name": "extract_result"}}
+        )
+        # 流式返回结果
+        for chunk in response_stream:
+            if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                tool_calls = chunk.choices[0].delta.tool_calls
+                if tool_calls:
+                    content = tool_calls[0].function.arguments
+                    yield content
+
+    except Exception as e:
+        if retry > 2:
+            print(f"Error in generate_prompt: {e}")
+            return
+        time.sleep(2)
+        take_prompt_stream(text, model, retry+1)
+
+
+def take_prompt(text, model: str = None, num: int = 10, retry: int = 0):  # 默认模型名称修改为OpenAI的模型
+    if not model:
+        model = DEFAULT_OPENAI_MODEL
+    MIDJOURNEY_PROMPT = '''# 你是一个视觉小说创作者，现在给你一个小说片段，帮我重新创作，并返回多个场景。
+    ## 创作要求：
+    - 营造引人入胜的氛围，吸引听众的注意力。
+    - 用富有节奏感的语言和细腻的情感描写，增强故事的戏剧性和深度。
+    - 需要拆分的细一点（每个场景一句话），尽量保证场景连贯性。
+    - 对于当前场景没有的描述，需要联系上下文，补充完整，不要输出无、空等，并且不要脱离故事情节。
+    - 每个场景的内容要有连贯性，图片风格要相对一致，不要出现突兀的场景，并且保持动漫风格。
+    ## 场景包含：
+    - 背景
+    - 时间
+    - 氛围
+    - 描述
+    - 视觉元素
+    - 人物
+    - 图片风格
+    - 场景内容
+    ## 要求：
+    - 至少输出{num}个场景
+    '''
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "extract_result",
+                "description": "根据小说或剧本提供的场景描述，将其拆分为多个场景。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "contexts": {
+                                        "type": "string",
+                                        "description": "背景"
+                                    },
+                                    "timing": {
+                                        "type": "string",
+                                        "description": "时间"
+                                    },
+                                    "milieu": {
+                                        "type": "string",
+                                        "description": "氛围"
+                                    },
+                                    "descriptive": {
+                                        "type": "string",
+                                        "description": "描述"
+                                    },
+                                    "visualElement": {
+                                        "type": "string",
+                                        "description": "视觉元素"
+                                    },
+                                    "character": {
+                                        "type": "string",
+                                        "description": "人物（性别、年龄、表情、身穿衣物、动作等体貌特征）"
+                                    },
+                                    "pictureStyle": {
+                                        "type": "string",
+                                        "description": "图片风格"
+                                    },
+                                    "sceneContent": {
+                                        "type": "string",
+                                        "description": "场景内容（一段即可，尽量简短，突出重点，可以包含对话）"
+                                    }
+                                },
+                                "required": ["contexts", "timing", "milieu", "descriptive", "visualElement", "character", "sceneContent"]
+                            },
+                            "description": "场景列表"
+                        }
+                    },
+                    "required": ["results"]
+                }
+            }
+        }
+    ]
+
+    try:
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "system",
@@ -204,7 +321,6 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry
                 描述：{result["descriptive"]}
                 视觉元素：{result["visualElement"]}
                 人物：{result["character"]}
-                场景内容：{result["sceneContent"]}
                 图片风格：{result["pictureStyle"]}
                 '''
                 texts.append({
@@ -221,27 +337,33 @@ def take_prompt(text, model: str = "deepseek-ai/DeepSeek-V2.5",num:int=10, retry
             return []
         time.sleep(2)
         return take_prompt(text, model, retry+1)
+
+
 def extract_markdown_image_urls(text):
     """
     从 Markdown 文本中提取图片 URL
-    
+
     参数:
         text (str): 包含 Markdown 图片语法的文本
-        
+
     返回:
         list: 提取的图片 URL 列表
     """
     # 正则表达式匹配 ![任意文本](URL) 格式
     pattern = r'!\[(.*?)\]\((.*?)\)'
-    
+
     # 查找所有匹配项
     matches = re.findall(pattern, text)
-    
+
     # 提取 URL 部分 (第二个捕获组)
     urls = [match[1] for match in matches]
-    
-    return urls  
-def text2imageToChat(prompt, model: str = "dall-e-3", size: str = "1024x1024", imagePath=None, retry: int = 0):
+
+    return urls
+
+
+def text2imageToChat(prompt, model: str = None, size: str = "1024x1024", imagePath=None, retry: int = 0):
+    if not model:
+        model = DEFAULT_OPENAI_IMAGE_MODEL
     """
     使用OpenAI的DALL-E模型将文本提示转换为图片
 
@@ -272,7 +394,10 @@ def text2imageToChat(prompt, model: str = "dall-e-3", size: str = "1024x1024", i
         return text2imageToChat(text, model, size, imagePath, retry+1)
 
 
-def text2image(prompt, model: str = "dall-e-3", size: str = "1024x1024", imagePath=None, retry: int = 0):
+def text2image(prompt, model: str = None, size: str = "1024x1024", imagePath=None, retry: int = 0):
+
+    if not model:
+        model = DEFAULT_OPENAI_IMAGE_MODEL
     """
     使用OpenAI的DALL-E模型将文本提示转换为图片
 
@@ -291,7 +416,7 @@ def text2image(prompt, model: str = "dall-e-3", size: str = "1024x1024", imagePa
         if imagePath:
             with open(imagePath, "rb") as image_file:
                 response = imageClient.images.create_variation(
-                    model="dall-e-2",
+                    model=model,
                     image=image_file,
                     prompt=prompt,
                     n=8,
