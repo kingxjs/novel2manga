@@ -1,6 +1,6 @@
 from flask import Flask, Response, request, render_template, jsonify, send_from_directory, stream_with_context
 
-from text_to_video import convertTextToVideo
+from text_to_video import convertTextToVideo,convertTextToImage
 import uuid
 import asyncio
 from configs import models
@@ -18,13 +18,11 @@ def index():
 def test():
     return render_template('test.html')
 
-
 @app.route('/reinvent', methods=['POST'])
 def reinvent():
     data = request.json
     novel = data.get('text', '')
 
-   # 创建一个同步生成器来包装异步函数
     def generate():
         # 创建一个新的事件循环来运行异步代码
         loop = asyncio.new_event_loop()
@@ -48,7 +46,6 @@ def reinvent():
         stream_with_context(generate()),
         content_type='text/event-stream'
     )
-
 # 辅助函数，用于获取异步生成器的下一个值
 
 
@@ -61,8 +58,6 @@ def take():
     data = request.json
     text = data.get('text', '')
     num = int(data.get('num', '10'))
-#    # 创建一个同步生成器来包装异步函数
-#     return jsonify({"results": take_prompt(text, num=num)})
  # 创建一个同步生成器来包装异步函数
     def generate():
         # 创建一个新的事件循环来运行异步代码
@@ -89,15 +84,33 @@ def take():
     )
 
 
+@app.route('/text_to_image', methods=['POST'])
+def text_to_image():
+    data = request.json
+    text = data["data"]
+    model = data.get('model', 'flux')
+    chapter_title =  data.get('chapter_title', '')
+    if not chapter_title:
+        chapter_title = str(uuid.uuid4())
+    
+    result = convertTextToImage(
+        validate_model(model), text, chapter_title)
+    
+    return jsonify({"result": result, "chapter_title": chapter_title})
+
+
 @app.route('/convert', methods=['POST'])
 def convert_text_to_video():
     data = request.json
     texts = data["texts"]
     model = data["model"]
     voice = data["voice"]
-    chapter_title = str(uuid.uuid4())
+    speed = data["speed"]
+    chapter_title =  data.get('chapter_title', '')
+    if not chapter_title:
+        chapter_title = str(uuid.uuid4())
     video_path, results = convertTextToVideo(
-        validate_model(model), texts, chapter_title, voice=voice)
+        validate_model(model), texts, chapter_title, voice=voice,speed=speed)
     
     return jsonify({'video_path': video_path, "results": results})
 
@@ -114,6 +127,10 @@ def get_available_models():
 
 @app.route('/videos/<path:filename>')
 def get_video(filename):
+    return send_from_directory('./', filename)
+
+@app.route('/image/<path:filename>')
+def get_image(filename):
     return send_from_directory('./', filename)
 
 

@@ -7,7 +7,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import re
-from api.llm_bk import generate_prompt, take_prompt, text2imageToChat
+from api.llm_bk import generate_prompt, take_prompt, text2imageToChat,text2image
 from api.text2img_liblib import Text2img
 from utils.cache_utils import get_cache_key, get_cache
 from utils.image_to_video import generate_video_with_subtitles
@@ -98,7 +98,7 @@ def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
     #         except Exception as e:
     #             print(f"下载图片失败: {e}")
     #             download_retry -= 1
-    imageUrl = text2imageToChat(prompt, model)
+    imageUrl = text2imageToChat(prompt, model,imagePath=controlImage)
     logger.info(f"图片地址: {imageUrl}")
     download_retry = 3
     # 得到https://liblibai-tmp-image.liblib.cloud/img/c7bb262ad8c84ddc87c3835f55a85137/6e473d6798281d4fc305b8e46ef3035525f6b26741ed41d72a8eda393c489849.png这样地址
@@ -111,7 +111,7 @@ def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
             return imagePath, imageUrl
         except Exception as e:
             print(f"下载图片失败: {e}")
-            imageUrl = text2imageToChat(prompt, model)
+            imageUrl = text2imageToChat(prompt, model,imagePath=controlImage)
             logger.info(f"图片地址: {imageUrl}")
             download_retry -= 1
     return "", imageUrl
@@ -131,11 +131,39 @@ def split_sentences(text):
     text = re.sub('(\…{2})([^”’])', r"\1\n\2", text)  # 中文省略号
     text = re.sub('([。！？\?][”’])([^，。！？\?])', r'\1\n\2', text)
     sentences = text.split("\n")
-    # 移除空白的句子
-    sentences = [sentence.strip()
-                 for sentence in sentences if sentence.strip()]
-    return sentences
-
+    # 移除空白的句子和只包含标点符号的句子
+    
+    # 处理句子列表
+    processed_sentences = []
+    pure_symbols_pattern = r'^[\s\.\,\!\?\;\:\"\'\"\'\、\。\，\！\？\；\：\（\）\【\】\《\》\—\…\[\]\(\)\s]+$'
+    
+    for i, sentence in enumerate(sentences):
+        stripped_sentence = sentence.strip()
+        if not stripped_sentence:  # 跳过空句子
+            continue
+            
+        # 检查是否只包含符号
+        is_pure_symbols = re.match(pure_symbols_pattern, stripped_sentence)
+        
+        if is_pure_symbols:
+            # 如果是第一个句子且只有符号，并且后面还有句子
+            if i == 0 and i + 1 < len(sentences):
+                # 将符号附加到下一个非空句子的开头
+                next_valid_idx = i + 1
+                while next_valid_idx < len(sentences) and not sentences[next_valid_idx].strip():
+                    next_valid_idx += 1
+                    
+                if next_valid_idx < len(sentences):
+                    sentences[next_valid_idx] = stripped_sentence + sentences[next_valid_idx]
+            # 如果不是第一个句子且前面有有效句子
+            elif processed_sentences:
+                # 将符号附加到前一个句子末尾
+                processed_sentences[-1] = processed_sentences[-1] + stripped_sentence
+        else:
+            # 正常有效句子，直接添加
+            processed_sentences.append(stripped_sentence)
+    
+    return processed_sentences
 
 # 清空上一本书的生成结果
 def clear_results():
@@ -151,8 +179,26 @@ def clear_results():
         os.makedirs("videos")
     clear_folder("videos")
 
+def convertTextToImage(model, data, chapter_title):
+    pervText = ""
+    if "prevScene" in data and data["prevScene"]:
+        pervText = data["prevScene"]["text"]+"\n剧本台词："+data["prevScene"]["sceneContent"]
 
-def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice=""):
+    prompt = generate_prompt(
+                data["text"]+"\n剧本台词："+data["sceneContent"], pervText=pervText) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+     
+    logger.info(f"生成图片提示词: {prompt}")
+    image_path, imageUrl = generateImage(
+                model, prompt, chapter_title, str(int(time.time())), data["control_image"] if "control_image" in data else None)
+    result = {
+        "image_prompt"  : prompt,
+    }
+    if image_path:
+        result["image_path"] = image_path
+        result["image_url"] = imageUrl
+    return result
+
+def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str="", speed:int=30):
 
     # 如果使用缓存，尝试从缓存中获取分句结果，跳过该分镜
     # if use_cache:
@@ -177,9 +223,13 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice=""):
         def process_scene(item_with_index):
             i, item = item_with_index
             logger.info(f"分镜段落: {item}")
+            if "image_prompt" in item:
+                item["index"] = i
+                item["sentences"] = split_sentences(item["sceneContent"])
+                return item
             # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
             prompt = generate_prompt(
-                item["text"]+"\n场景内容："+item["sceneContent"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+                item["text"]+"\n剧本台词："+item["sceneContent"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
             logger.info(f"生成图片提示词: {prompt}")
 
             # # 获取控制图像（如果有的话）
@@ -222,6 +272,9 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice=""):
         results.extend(scene_results)
 
         for i, result in enumerate(results):
+            if "image_path" in result and result["image_path"] and os.path.exists(result["image_path"]):
+                continue
+        
             # 获取控制图像（如果有的话）
             control_image = None
             if results and len(results) > 0:
@@ -241,7 +294,7 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice=""):
     output_video_path = "results/"+chapter_title+"/videos/" + cache_key + \
                         "-" + model.split("/")[-1] + ".mp4"
     success = generate_video_with_subtitles(
-        results, output_video_path, chapter_title, voice=voice)
+        results, output_video_path, chapter_title, voice=voice,speed=speed)
     if success:
         return output_video_path, results
     return "", results

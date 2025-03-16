@@ -338,7 +338,11 @@ def create_dynamic_effect(clip: VideoClip, effect_type: str = "random",
         effect_type = random.choice(["pan", "zoom", "pan_zoom"])
     
     try:
-        if effect_type == "pan":
+        if effect_type == "none":
+            # 无效果，保持原样
+            final_clip = CompositeVideoClip([background, clip.set_position('center')],
+                                           size=(target_w, target_h))
+        elif effect_type == "pan":
             # 创建平移效果
             moving_clip = create_pan_effect(
                 clip,
@@ -478,7 +482,7 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[s
 
 # ---------------------- 音频处理函数 ----------------------
 def process_audio_segment(item_idx: int, sentence_idx: int, text: str,
-                          chapter_title: str, voice: str) -> Optional[str]:
+                          chapter_title: str, voice: str,speed:int=30, retry: int = 0) -> Optional[str]:
     """
     处理单个音频段落，便于并行处理
 
@@ -488,6 +492,7 @@ def process_audio_segment(item_idx: int, sentence_idx: int, text: str,
         text: 文本内容
         chapter_title: 章节标题
         voice: TTS语音类型
+        speed: 速度
 
     Returns:
         生成的音频文件路径，失败时返回None
@@ -497,14 +502,18 @@ def process_audio_segment(item_idx: int, sentence_idx: int, text: str,
 
     try:
         if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
-            tts_sync(text, audio_path, voice=voice, rate=20, pitch=10)
+            try:
+                tts_sync(text, audio_path, voice=voice, rate=speed, pitch=10)
+            except Exception as e:
+                logger.error(f"音频生成失败: {e}")
+                time.sleep(2)
+                if(retry>=3):
+                    return None
+                return process_audio_segment(item_idx,sentence_idx, text,chapter_title, voice=voice, speed=speed,retry=retry+1)
 
             # 验证生成的音频
             if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
-                # 重试一次
-                logger.warning(f"音频生成失败，正在重试: {audio_path}")
-                time.sleep(1)
-                tts_sync(text, audio_path, voice=voice, rate=20, pitch=10)
+                return None
 
         logger.info(f"音频生成成功: {audio_path}")
         return audio_path
@@ -515,7 +524,7 @@ def process_audio_segment(item_idx: int, sentence_idx: int, text: str,
 
 # ---------------------- 主函数 ----------------------
 def generate_video_with_subtitles(data: List[Dict], output_video: str,
-                                  chapter_title: str, voice: str = "zh-CN-XiaoxiaoNeural") -> bool:
+                                  chapter_title: str, voice: str = "zh-CN-XiaoxiaoNeural", speed:int=30) -> bool:
     """
     根据给定的图片、字幕文本和输出文件名生成带有字幕的视频。
 
@@ -542,18 +551,18 @@ def generate_video_with_subtitles(data: List[Dict], output_video: str,
 
         for j, item in enumerate(data):
             for i, text in enumerate(item["sentences"]):
-                audio_tasks.append((j, i, text, chapter_title, voice))
+                audio_tasks.append((j, i, text, chapter_title, voice, speed, 0))
 
         # 使用线程池并行处理音频生成
         audio_results = {}
-        with ThreadPoolExecutor(max_workers=min(8, len(audio_tasks))) as executor:
+        with ThreadPoolExecutor(max_workers=min(3, len(audio_tasks))) as executor:
             futures = {executor.submit(
                 process_audio_segment, *task): task for task in audio_tasks}
             for future in futures:
-                j, i, _, _, _ = futures[future]
+                task = futures[future]
+                j, i = task[0], task[1]  # 只解包需要的索引值
                 result = future.result()
-                if result:
-                    audio_results[(j, i)] = result
+                audio_results[(j, i)] = result
 
         # 检查是否所有音频都成功生成
         if len(audio_results) != len(audio_tasks):
@@ -565,6 +574,8 @@ def generate_video_with_subtitles(data: List[Dict], output_video: str,
 
         for j, item in enumerate(data):
             try:
+                if "image_path" not in item or not os.path.exists(item["image_path"]):
+                    continue
                 image = Image.open(item["image_path"]).convert("RGB")
             except Exception as e:
                 logger.error(f"无法打开图像文件 {item['image_path']}: {e}")
@@ -576,23 +587,25 @@ def generate_video_with_subtitles(data: List[Dict], output_video: str,
                 # 获取对应的音频文件
                 audio_path = audio_results.get((j, i))
                 if not audio_path:
-                    logger.warning(f"跳过片段 {j}_{i}，无法找到对应音频")
+                    logger.warning(f"跳过片段 {j}_{i}，无法找到对应音频：{text}")
                     continue
-
+                if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+                    logger.warning(f"跳过片段 {j}_{i}，无法找到对应音频：{text}")
+                    continue
                 # 加载音频
                 try:
                     audio_clip = AudioFileClip(audio_path)
                     # 缩短音频时间，平滑过渡
                     adjusted_duration = max(0.1, audio_clip.duration - 0.08)
                 except Exception as e:
-                    logger.error(f"音频加载失败 {audio_path}: {e}")
+                    logger.error(f"音频加载失败 {audio_path}，{text}: {e}")
                     continue
 
                 # 创建图像副本并添加动态效果
                 img = image.copy()
                 img_clip = ImageClip(np.array(img)).set_duration(
                     adjusted_duration)
-                # img_clip = create_dynamic_effect(img_clip, "pan")
+                img_clip = create_dynamic_effect(img_clip, "none")
                 img_clip = img_clip.set_audio(audio_clip)
 
                 # 获取图像尺寸
@@ -632,7 +645,7 @@ def generate_video_with_subtitles(data: List[Dict], output_video: str,
                 composed_clip = CompositeVideoClip([img_clip, text_clip])
 
                 # 添加淡入淡出效果
-                composed_clip = composed_clip.fadein(0.2).fadeout(0.2)
+                # composed_clip = composed_clip.fadein(0.2).fadeout(0.2)
 
                 final_clips.append(composed_clip)
         # 合成最终视频

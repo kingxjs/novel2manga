@@ -6,6 +6,7 @@ models = [
     # "pollinations-ai",
     # "ByteDance/SDXL-Lightning",
     # "stabilityai/stable-diffusion-xl-base-1.0",
+    "gemini-2.0-flash-exp-image",
     "flux",
     "flux-speed",
     "flux-pro/ultra",

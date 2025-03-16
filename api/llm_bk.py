@@ -18,9 +18,9 @@ image_api_key = os.getenv('IMAGE_OPEN_API_KEY', api_key)  # 变量名可以保�
 image_base_url = os.getenv('IMAGE_OPEN_AI_BASE_URL',
                            base_url)  # 如果有自定义API端点需要添加这个变量
 
-DEFAULT_OPENAI_MODEL = os.getenv('DEFAULT_OPENAI_MODEL')  # 如果有自定义API端点需要添加这个变量
+DEFAULT_OPENAI_MODEL = os.getenv('DEFAULT_OPENAI_MODEL',"deepseek-ai/DeepSeek-V2.5")  # 如果有自定义API端点需要添加这个变量
 DEFAULT_OPENAI_IMAGE_MODEL = os.getenv(
-    'DEFAULT_OPENAI_MODEL')  # 如果有自定义API端点需要添加这个变量
+    'DEFAULT_OPENAI_MODEL','')  # 如果有自定义API端点需要添加这个变量
 
 client = OpenAI(
     api_key=api_key,  # 使用api_key而非api_token参数
@@ -65,7 +65,7 @@ async def reinvent_prompt(text, model: str = None):
 # 封装上述代码成工具函数
 
 
-def generate_prompt(text, model: str = None, retry: int = 0) -> str:  # 默认模型名称修改为OpenAI的模型
+def generate_prompt(text, pervText: str = None, model: str = None, retry: int = 0) -> str:  # 默认模型名称修改为OpenAI的模型
     if not model:
         model = DEFAULT_OPENAI_MODEL
     #     MIDJOURNEY_PROMPT = '''Hello, you are an expert in generating midjourney prompt words, users give you a description, you generate the corresponding prompt words!
@@ -100,39 +100,50 @@ def generate_prompt(text, model: str = None, retry: int = 0) -> str:  # 默认�
         A WWII-era nurse in a German uniform, holding a wine bottle and stethoscope, sitting at a table in white attire, with a table in the background, masterpiece, best quality, 4k, illustration style, best lighting, depth of field, detailed character, detailed environment.
         '''
     try:
+        messages = [{"role": "system",
+                       "content": MIDJOURNEY_PROMPT}]
+        prompt = text
+        if pervText:
+            messages.append({"role": "user", "content": pervText})
+            prompt = '结合上一个场景，优化提示词，平滑过渡场景。\n\n' + text
+
+        messages.append({"role": "user", "content": prompt})
+        
         response = client.chat.completions.create(
             model=model,
-            messages=[{"role": "system",
-                       "content": MIDJOURNEY_PROMPT}, {"role": "user", "content": text}]
+            messages=messages
         )
         return response.choices[0].message.content
     except Exception as e:
         if retry > 2:
             print(f"Error in generate_prompt: {e}")
             return ""
-        return generate_prompt(text, model, retry+1)
+        return generate_prompt(text,pervText=pervText, model=model, retry=retry+1)
 
 
 # 默认模型名称修改为OpenAI的模型
 async def take_prompt_stream(text, model: str = None, num: int = 10, retry: int = 0):
     if not model:
         model = DEFAULT_OPENAI_MODEL
-    MIDJOURNEY_PROMPT = '''# 你是一个视觉小说创作者，现在给你一个小说片段，帮我重新创作，并返回多个场景。
+    MIDJOURNEY_PROMPT = '''# 你是一个视觉小说创作者，现在给你一个小说片段，帮我重新创作，要保留原文大意，并返回多个场景。
     ## 创作要求：
     - 营造引人入胜的氛围，吸引听众的注意力。
     - 用富有节奏感的语言和细腻的情感描写，增强故事的戏剧性和深度。
     - 需要拆分的细一点（场景多一点，至少{num}个，每个场景一句话），尽量保证场景连贯性。
     - 对于当前场景没有的描述，需要联系上下文，补充完整，不要输出无、空等，并且不要脱离故事情节。
+    - 注意全局背景信息，现场有什么东西，比如桌子、床、窗户、灯光等信息，每种东西都要详细描述是什么样子的，在每个场景中都要输出这些信息，注意联系上下文。
+    - 注意背景是全局背景，不是某个场景的背景，如果没有特殊变化，要输出全局背景，避免布置错误。不要省略输出，一定要把所有布置全部输出。
     - 每个场景的内容要有连贯性，图片风格要相对一致，不要出现突兀的场景，并且保持动漫风格。
+    - 注意人物的衣服（造型、颜色）、发型、表情、动作等细节，在每个场景中都要输出这些信息，注意联系上下文。
+    - 剧本台词以第一人称叙述风格生成，控制在30个字以内。
     ## 场景包含：
     - 背景
     - 时间
     - 氛围
     - 描述
-    - 视觉元素
     - 人物
     - 图片风格
-    - 场景内容（一句话即可，尽量简短，突出重点，可以包含对话）
+    - 剧本台词（以第一人称叙述风格生成。）
     '''
     tools = [
         {
@@ -150,7 +161,7 @@ async def take_prompt_stream(text, model: str = None, num: int = 10, retry: int 
                                 "properties": {
                                     "contexts": {
                                         "type": "string",
-                                        "description": "背景"
+                                        "description": "背景（全局背景布置）"
                                     },
                                     "timing": {
                                         "type": "string",
@@ -164,13 +175,9 @@ async def take_prompt_stream(text, model: str = None, num: int = 10, retry: int 
                                         "type": "string",
                                         "description": "描述"
                                     },
-                                    "visualElement": {
-                                        "type": "string",
-                                        "description": "视觉元素"
-                                    },
                                     "character": {
                                         "type": "string",
-                                        "description": "人物（性别、年龄、体貌特征）"
+                                        "description": "人物（性别、年龄、体貌特征，放到括号中）"
                                     },
                                     "pictureStyle": {
                                         "type": "string",
@@ -178,10 +185,10 @@ async def take_prompt_stream(text, model: str = None, num: int = 10, retry: int 
                                     },
                                     "sceneContent": {
                                         "type": "string",
-                                        "description": "场景内容（一段即可，尽量简短，突出重点）"
+                                        "description": "剧本台词（以第一人称叙述风格生成。）"
                                     }
                                 },
-                                "required": ["contexts", "timing", "milieu", "descriptive", "visualElement", "character", "sceneContent"]
+                                "required": ["contexts", "timing", "milieu", "descriptive", "character", "sceneContent"]
                             },
                             "description": "场景列表"
                         }
@@ -225,20 +232,19 @@ def take_prompt(text, model: str = None, num: int = 10, retry: int = 0):  # 默�
     ## 创作要求：
     - 营造引人入胜的氛围，吸引听众的注意力。
     - 用富有节奏感的语言和细腻的情感描写，增强故事的戏剧性和深度。
-    - 需要拆分的细一点（每个场景一句话），尽量保证场景连贯性。
+    - 需要拆分的细一点（场景多一点，至少{num}个，每个场景一句话），尽量保证场景连贯性。
     - 对于当前场景没有的描述，需要联系上下文，补充完整，不要输出无、空等，并且不要脱离故事情节。
+    - 注意背景信息，现场有什么东西，比如桌子、床、窗户、灯光等信息，每种东西都要详细描述是什么样子的，在每个场景中都要输出这些信息，注意联系上下文。
     - 每个场景的内容要有连贯性，图片风格要相对一致，不要出现突兀的场景，并且保持动漫风格。
+    - 注意人物的衣服（造型、颜色）、发型、表情、动作等细节，在每个场景中都要输出这些信息，注意联系上下文。
     ## 场景包含：
     - 背景
     - 时间
     - 氛围
     - 描述
-    - 视觉元素
     - 人物
     - 图片风格
-    - 场景内容
-    ## 要求：
-    - 至少输出{num}个场景
+    - 剧本台词（一句话即可，尽量简短，突出重点，可以包含对话）
     '''
     tools = [
         {
@@ -270,13 +276,9 @@ def take_prompt(text, model: str = None, num: int = 10, retry: int = 0):  # 默�
                                         "type": "string",
                                         "description": "描述"
                                     },
-                                    "visualElement": {
-                                        "type": "string",
-                                        "description": "视觉元素"
-                                    },
                                     "character": {
                                         "type": "string",
-                                        "description": "人物（性别、年龄、表情、身穿衣物、动作等体貌特征）"
+                                        "description": "人物（性别、年龄、体貌特征，放到括号中）"
                                     },
                                     "pictureStyle": {
                                         "type": "string",
@@ -284,10 +286,10 @@ def take_prompt(text, model: str = None, num: int = 10, retry: int = 0):  # 默�
                                     },
                                     "sceneContent": {
                                         "type": "string",
-                                        "description": "场景内容（一段即可，尽量简短，突出重点，可以包含对话）"
+                                        "description": "剧本台词（一段即可，尽量简短，突出重点）"
                                     }
                                 },
-                                "required": ["contexts", "timing", "milieu", "descriptive", "visualElement", "character", "sceneContent"]
+                                "required": ["contexts", "timing", "milieu", "descriptive", "character", "sceneContent"]
                             },
                             "description": "场景列表"
                         }
@@ -319,7 +321,6 @@ def take_prompt(text, model: str = None, num: int = 10, retry: int = 0):  # 默�
                 时间：{result["timing"]}
                 氛围：{result["milieu"]}
                 描述：{result["descriptive"]}
-                视觉元素：{result["visualElement"]}
                 人物：{result["character"]}
                 图片风格：{result["pictureStyle"]}
                 '''
@@ -391,10 +392,10 @@ def text2imageToChat(prompt, model: str = None, size: str = "1024x1024", imagePa
             return ""
         print(f"重试: {retry+1}")
         time.sleep(2)
-        return text2imageToChat(text, model, size, imagePath, retry+1)
+        return text2imageToChat(prompt, model, size, imagePath, retry+1)
 
 
-def text2image(prompt, model: str = None, size: str = "1024x1024", imagePath=None, retry: int = 0):
+def text2image(prompt, model: str = None, size: str = "1024x768", imagePath=None, retry: int = 0):
 
     if not model:
         model = DEFAULT_OPENAI_IMAGE_MODEL
@@ -431,22 +432,16 @@ def text2image(prompt, model: str = None, size: str = "1024x1024", imagePath=Non
                 size=size
             )
 
-        # 提取生成的图片URL
-        result = {
-            "success": True,
-            "images": [item.url for item in response.data],
-            "revised_prompt": response.data[0].revised_prompt if hasattr(response.data[0], 'revised_prompt') else None
-        }
-
-        return [item.url for item in response.data]
+        data = [item.url for item in response.data]
+        return data[0] if data and len(data) > 0 else ""
 
     except Exception as e:
         if retry > 2:
             print(f"Error in text2image: {e}")
             return []
         print(f"重试: {retry+1}")
-        time.sleep(2)
-        return text2image(text, model, size, imagePath, retry+1)
+        time.sleep(1)
+        return text2image(prompt, model, size, imagePath, retry+1)
 
 
 if __name__ == '__main__':
