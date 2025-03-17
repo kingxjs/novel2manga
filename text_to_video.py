@@ -7,7 +7,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import re
-from api.llm_bk import generate_prompt, take_prompt, text2imageToChat,text2image
+from api.llm_bk import generate_prompt, take_prompt, text2imageToChat, text2image
 from api.text2img_liblib import Text2img
 from utils.cache_utils import get_cache_key, get_cache
 from utils.image_to_video import generate_video_with_subtitles
@@ -98,7 +98,7 @@ def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
     #         except Exception as e:
     #             print(f"下载图片失败: {e}")
     #             download_retry -= 1
-    imageUrl = text2imageToChat(prompt, model,imagePath=controlImage)
+    imageUrl = text2imageToChat(prompt, model, imagePath=controlImage)
     logger.info(f"图片地址: {imageUrl}")
     download_retry = 3
     # 得到https://liblibai-tmp-image.liblib.cloud/img/c7bb262ad8c84ddc87c3835f55a85137/6e473d6798281d4fc305b8e46ef3035525f6b26741ed41d72a8eda393c489849.png这样地址
@@ -111,7 +111,7 @@ def generateImage(model, prompt, chapter_title, timeStamp, controlImage=None):
             return imagePath, imageUrl
         except Exception as e:
             print(f"下载图片失败: {e}")
-            imageUrl = text2imageToChat(prompt, model,imagePath=controlImage)
+            imageUrl = text2imageToChat(prompt, model, imagePath=controlImage)
             logger.info(f"图片地址: {imageUrl}")
             download_retry -= 1
     return "", imageUrl
@@ -124,48 +124,159 @@ def clear_folder(folder_path):
         if os.path.isfile(file_path):
             os.remove(file_path)
 
+def chunk_max_string(string, charactersDefiningChunking=["。", "！", "？", "；", "?", "!", "; ", "\n\n"], maxNumberOfCharactersPerChunk=20):
+    """
+    根据指定的字符定义分块，并确保每个块的字符数不超过最大字符数。
+
+    :param string: 待分块的字符串
+    :param charactersDefiningChunking: 定义分块的字符列表 ["，", "。", "！", "？", "；", ",", "?", "!", "; "]
+    :param maxNumberOfCharactersPerChunk: 每个块的最大字符数，默认为10
+    :return: 分块后的字符串列表
+    """
+    chunks = []  # 存储分块后的字符串列表
+    last_chunk_end = 0  # 上一个块的结束位置，初始化为0表示从字符串的开头开始
+
+    # 遍历整个字符串
+    # 终止条件改为len(string)+1，确保最后一个字符也能被考虑
+    for char_index in range(1, len(string) + 1):
+        # 如果当前块的字符数已经达到了最大字符数
+        if char_index - last_chunk_end == maxNumberOfCharactersPerChunk:
+            found_chunk_end = False  # 标记是否找到了合适的分块位置
+            chars_away = 1  # 用于在当前字符的前后扩展搜索区间，初始为1
+
+            # 扩展搜索区间，尝试寻找一个合适的分块位置
+            while not found_chunk_end and chars_away < maxNumberOfCharactersPerChunk:
+                # 遍历所有定义为分块字符的标点符号
+                for chunk_char in charactersDefiningChunking:
+                    # 在当前位置前后 `chars_away` 个字符内寻找分隔符
+                    chunk_char_index = string[char_index -
+                                              chars_away:char_index + chars_away + 1].find(chunk_char)
+
+                    # 如果找到了分隔符
+                    if chunk_char_index > -1:
+                        # 计算当前分块的结束位置
+                        chunk_end = char_index - chars_away + chunk_char_index + 1
+                        # 如果分块后的长度超出限制，则不做分块
+                        if chunk_end - last_chunk_end > maxNumberOfCharactersPerChunk:
+                            continue  # 如果超出最大字符数，跳过当前分块
+
+                        # 将分块内容添加到结果列表中
+                        chunks.append(string[last_chunk_end:chunk_end])
+                        # 更新上一个块的结束位置
+                        last_chunk_end = chunk_end
+                        # 标记已经找到了分块的位置
+                        found_chunk_end = True
+                        break  # 找到分块位置后跳出内层循环
+
+                # 扩展搜索区间，增加一个字符距离
+                chars_away += 1
+
+            # 如果在扩展区间内仍然没找到合适的分块位置，直接切分
+            if not found_chunk_end:
+                # 如果当前块的长度已达到最大限制，则直接添加该块
+                chunks.append(string[last_chunk_end:char_index])
+                last_chunk_end = char_index  # 更新上一个块的结束位置
+
+    # 如果字符串剩余部分的长度小于最大块大小，则直接将剩余部分加入最后一个块
+    if last_chunk_end < len(string):
+        chunks.append(string[last_chunk_end:])
+
+    # 返回分块后的字符串列表
+    return chunks
+
 
 def split_sentences(text):
-    text = re.sub('([。！？\?])([^”’])', r"\1\n\2", text)  # 单字符断句符
-    text = re.sub('(\.{6})([^”’])', r"\1\n\2", text)  # 英文省略号
-    text = re.sub('(\…{2})([^”’])', r"\1\n\2", text)  # 中文省略号
-    text = re.sub('([。！？\?][”’])([^，。！？\?])', r'\1\n\2', text)
-    sentences = text.split("\n")
-    # 移除空白的句子和只包含标点符号的句子
-    
-    # 处理句子列表
+    """
+    将文本分割成字幕句子，适当处理标点符号。
+    该函数确保每个字幕是一个完整的想法表达，正确处理嵌套的引号和括号。
+    """
+    # 替换常见的换行符和多个空格为单个空格
+    text = re.sub(r'\s+', ' ', text)
+
+    # 使用栈跟踪引号和括号的状态
+    quote_stack = []  # 用于跟踪引号
+    bracket_stack = []  # 用于跟踪括号
+    sentence_breaks = []  # 记录句子分割点
+
+    for i, char in enumerate(text):
+        # 跟踪引号状态
+        if char in '"\'""''':
+            # 检查是否匹配栈顶的引号（闭合引号）
+            if quote_stack and quote_stack[-1] == char:
+                quote_stack.pop()
+            else:
+                quote_stack.append(char)
+
+        # 跟踪括号状态
+        elif char in '([{【（《':
+            bracket_stack.append(char)
+        elif char in ')]}】）》':
+            if bracket_stack:  # 确保栈不为空
+                bracket_stack.pop()
+
+        # 只有当引号和括号都正确闭合时，才考虑在句号等标点后分割
+        elif char in '。！？!?' and not quote_stack and not bracket_stack:
+            # 记录句子结束位置（包括标点）
+            sentence_breaks.append(i + 1)
+
+        # 处理省略号
+        elif char == '.' and i + 2 < len(text) and text[i:i+3] == '...' and not quote_stack and not bracket_stack:
+            # 跳过接下来的两个点（已经处理了第一个点）
+            i += 2
+            sentence_breaks.append(i + 1)
+
+        elif char == '…' and not quote_stack and not bracket_stack:
+            sentence_breaks.append(i + 1)
+
+    # 根据句子分割点分割文本
+    sentences = []
+    start = 0
+    for end in sentence_breaks:
+        sentences.append(text[start:end].strip())
+        start = end
+
+    # 添加最后一个句子（如果有）
+    if start < len(text):
+        sentences.append(text[start:].strip())
+
+    # 处理句子列表，合并过短的片段
     processed_sentences = []
-    pure_symbols_pattern = r'^[\s\.\,\!\?\;\:\"\'\"\'\、\。\，\！\？\；\：\（\）\【\】\《\》\—\…\[\]\(\)\s]+$'
-    
-    for i, sentence in enumerate(sentences):
-        stripped_sentence = sentence.strip()
-        if not stripped_sentence:  # 跳过空句子
+    current_sentence = ""
+
+    for sentence in sentences:
+        stripped = sentence.strip()
+        if not stripped:
             continue
-            
-        # 检查是否只包含符号
-        is_pure_symbols = re.match(pure_symbols_pattern, stripped_sentence)
-        
-        if is_pure_symbols:
-            # 如果是第一个句子且只有符号，并且后面还有句子
-            if i == 0 and i + 1 < len(sentences):
-                # 将符号附加到下一个非空句子的开头
-                next_valid_idx = i + 1
-                while next_valid_idx < len(sentences) and not sentences[next_valid_idx].strip():
-                    next_valid_idx += 1
-                    
-                if next_valid_idx < len(sentences):
-                    sentences[next_valid_idx] = stripped_sentence + sentences[next_valid_idx]
-            # 如果不是第一个句子且前面有有效句子
+
+        # 如果只是标点符号或非常短（少于2个字符），与相邻句子合并
+        if len(stripped) < 2 or re.match(r'^[\s\.\,\!\?\;\:\"\'\"\'\、\。\，\！\？\；\：\（\）\【\】\《\》\—\…\[\]\(\)\s]+$', stripped):
+            if current_sentence:
+                # 附加到前一句
+                current_sentence += " " + stripped
             elif processed_sentences:
-                # 将符号附加到前一个句子末尾
-                processed_sentences[-1] = processed_sentences[-1] + stripped_sentence
+                # 附加到最后一个处理过的句子
+                processed_sentences[-1] += " " + stripped
         else:
-            # 正常有效句子，直接添加
-            processed_sentences.append(stripped_sentence)
-    
+            # 如果有正在构建的当前句子，完成它
+            if current_sentence:
+                processed_sentences.append(current_sentence)
+
+            # 开始新句子
+            current_sentence = stripped
+
+    # 添加最后一个句子（如果有）
+    if current_sentence:
+        processed_sentences.append(current_sentence)
+
+    # 最终清理 - 删除任何多余的空格
+    processed_sentences = [re.sub(r'\s+', ' ', s).strip()
+                           for s in processed_sentences]
+    print(processed_sentences)
     return processed_sentences
 
 # 清空上一本书的生成结果
+
+
 def clear_results():
     # 清空 images 文件夹
     if not os.path.exists("images"):
@@ -179,26 +290,29 @@ def clear_results():
         os.makedirs("videos")
     clear_folder("videos")
 
+
 def convertTextToImage(model, data, chapter_title):
     pervText = ""
     if "prevScene" in data and data["prevScene"]:
-        pervText = data["prevScene"]["text"]+"\n剧本台词："+data["prevScene"]["sceneContent"]
+        pervText = data["prevScene"]["text"] + \
+            "\n剧本台词："+data["prevScene"]["sceneContent"]
 
     prompt = generate_prompt(
-                data["text"]+"\n剧本台词："+data["sceneContent"], pervText=pervText) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
-     
+        data["text"]+"\n剧本台词："+data["sceneContent"], pervText=pervText) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+
     logger.info(f"生成图片提示词: {prompt}")
     image_path, imageUrl = generateImage(
-                model, prompt, chapter_title, str(int(time.time())), data["control_image"] if "control_image" in data else None)
+        model, prompt, chapter_title, str(int(time.time())), data["control_image"] if "control_image" in data else None)
     result = {
-        "image_prompt"  : prompt,
+        "image_prompt": prompt,
     }
     if image_path:
         result["image_path"] = image_path
         result["image_url"] = imageUrl
     return result
 
-def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str="", speed:int=30):
+
+def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice: str = "", speed: int = 30):
 
     # 如果使用缓存，尝试从缓存中获取分句结果，跳过该分镜
     # if use_cache:
@@ -217,6 +331,9 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str=""
     # texts = take_prompt(text,num=20)
     print(f"分镜数: {len(texts)}")
     results = []
+    for i, item in enumerate(texts):
+        if i > 0:
+            item["prevScene"] = texts[i-1]
 
     # 使用线程池并行处理图像生成
     with ThreadPoolExecutor(max_workers=FIXED_NUM_THREADS) as executor:
@@ -225,11 +342,16 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str=""
             logger.info(f"分镜段落: {item}")
             if "image_prompt" in item:
                 item["index"] = i
-                item["sentences"] = split_sentences(item["sceneContent"])
+                item["sentences"] = chunk_max_string(item["sceneContent"])
                 return item
+            pervText = ""
+            if "prevScene" in item and item["prevScene"]:
+                pervText = item["prevScene"]["text"] + \
+                    "\n剧本台词："+item["prevScene"]["sceneContent"]
+
             # text拼接提示修饰词very detailed, ultra high resolution, 32K UHD, best quality, masterpiece
             prompt = generate_prompt(
-                item["text"]+"\n剧本台词："+item["sceneContent"]) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
+                item["text"]+"\n剧本台词："+item["sceneContent"], pervText=pervText) + " ,comic style, very detailed, ultra high resolution, 2K, masterpiece,"
             logger.info(f"生成图片提示词: {prompt}")
 
             # # 获取控制图像（如果有的话）
@@ -256,7 +378,7 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str=""
                 "image_path": "",
                 "image_url": "",
                 "sceneContent": item["sceneContent"],
-                "sentences": split_sentences(item["sceneContent"]),
+                "sentences": chunk_max_string(item["sceneContent"]),
                 "index": i  # 保存原始索引以便保持顺序
             }
 
@@ -274,10 +396,11 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str=""
         for i, result in enumerate(results):
             if "image_path" in result and result["image_path"] and os.path.exists(result["image_path"]):
                 continue
-        
+
+
             # 获取控制图像（如果有的话）
             control_image = None
-            if results and len(results) > 0:
+            if results and len(results) > 0 and "image_path" in results[len(results)-1] and results[len(results)-1]["image_path"] and os.path.exists(results[len(results)-1]["image_path"]):
                 control_image = results[len(results)-1]["image_path"]
 
             image_path, imageUrl = generateImage(
@@ -294,7 +417,7 @@ def convertTextToVideo(model, texts, chapter_title, use_cache=True, voice:str=""
     output_video_path = "results/"+chapter_title+"/videos/" + cache_key + \
                         "-" + model.split("/")[-1] + ".mp4"
     success = generate_video_with_subtitles(
-        results, output_video_path, chapter_title, voice=voice,speed=speed)
+        results, output_video_path, chapter_title, voice=voice, speed=speed)
     if success:
         return output_video_path, results
     return "", results
@@ -439,4 +562,5 @@ if __name__ == '__main__':
     # '''
     #     convertTextToVideo("stable-diffusion-v1-5", text_test)
 
-    batchConvertTextToVideo("liblib", "file/novel.txt", "Chapter One")
+    # batchConvertTextToVideo("liblib", "file/novel.txt", "Chapter One")
+    split_sentences("前头跑的人从月洞探出了脑袋来，却是个十二三岁的少年。这少年一脸心有余悸的样子道：“姐夫若不打我，我便不跑。”")

@@ -550,6 +550,7 @@ def generate_video_with_subtitles(data: List[Dict], output_video: str,
         audio_tasks = []
 
         for j, item in enumerate(data):
+            print(item["sentences"])
             for i, text in enumerate(item["sentences"]):
                 audio_tasks.append((j, i, text, chapter_title, voice, speed, 0))
 
